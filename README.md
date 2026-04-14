@@ -36,6 +36,9 @@ This Lua script provides real-time telemetry monitoring for your Rotorflight , d
 # Rotorflight  Telemetry Widget for RadioMaster TX16 MK3 PRO 
 Under testing. It will be available to everyone soon.
 
+## Features
+The PRO version has been optimized compared to the Mini version. It now offers better functionality for viewing models and flight logs. It allows for a convenient way to see how many models the remote control has flown, and also enables the display of each model categorized by date. The visual experience has been enhanced.
+
 Donate
 If you find DBK Telemetry Script useful, please consider supporting the development by donating via PayPal: aliuge2000@163.com
 When donating, feel free to include your email address — I will send you new features for early testing!
