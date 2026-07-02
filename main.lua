@@ -8,7 +8,7 @@ local LOG_ROOT = WIDGET_ROOT .. "/logs"
 local SYSTEM_LOG_ROOT = LOG_ROOT .. "/System"
 local ENABLE_FLIGHT_REPORT_POPUP = false
 local TopValue = 10
-local crsf_field = { "Vbat", "Curr", "Hspd", "Capa", "Bat%", "Tesc", "Tmcu", "1RSS", "2RSS", "RQly", "Thr", "Vbec", "ARM", "Gov", "Vcel","Tmcu","PID#" }
+local crsf_field = { "Vbat", "Curr", "Hspd", "Capa", "Bat%", "Tesc", "Tmcu", "1RSS", "2RSS", "RQly", "Thr", "Vbec", "ARM", "Gov", "Vcel","Tmcu","PID#","ARMD" }
 local TELE_ITEMS = #crsf_field
 local LOG_INFO_LEN = 22
 local LOG_DATA_LEN = 115
@@ -79,6 +79,33 @@ local chart_cache = nil
 local chart_cache_key = ""
 -- Chart render sampling step: 1=draw every point (finest), 5=draw every 5th point (fastest), default 3
 local chart_render_step = 3
+local ARM_DISABLE_FLAG_NAMES = {
+    [0] = "NO GYRO",
+    [1] = "FAIL SAFE",
+    [2] = "RX FAIL SAFE",
+    [3] = "BAD RX RECOVERY",
+    [4] = "BOX FAIL SAFE",
+    [5] = "GOVERNOR",
+    [7] = "THROTTLE",
+    [8] = "ANGLE",
+    [9] = "BOOT GRACE",
+    [10] = "NO PREARM",
+    [11] = "LOAD",
+    [12] = "CALIBRATING",
+    [13] = "CLI",
+    [14] = "CMS MENU",
+    [15] = "BST",
+    [16] = "MSP",
+    [17] = "PARALYZE",
+    [18] = "GPS",
+    [19] = "RESC",
+    [20] = "RPM FILTER",
+    [21] = "REBOOT REQD",
+    [22] = "DSHOT BITBANG",
+    [23] = "ACC CAL",
+    [24] = "MOTOR PROTO",
+    [25] = "ARM SWITCH"
+}
 
 local options = {
     { "SquareColor", COLOR, WHITE },
@@ -915,6 +942,115 @@ local function draw_time_display(x, y, hours, minutes, digit_size, color)
     local min_ones = minutes % 10
     draw_digit_segment(current_x, y, min_ones, seg_width, seg_height, seg_thickness, color, gray_color)
 end
+
+local function arming_disable_flags_to_string(flags)
+    if flags == nil then
+        return "OK"
+    end
+
+    local names = {}
+    flags = math.floor(flags)
+    for i = 0, 25 do
+        local mask = 2 ^ i
+        if math.floor(flags / mask) % 2 == 1 then
+            local name = ARM_DISABLE_FLAG_NAMES[i]
+            if name and name ~= "" then
+                table.insert(names, name)
+            end
+        end
+    end
+
+    if #names == 0 then
+        return "OK"
+    end
+
+    return table.concat(names, ", ")
+end
+
+local function wrap_disable_flags_text(text, max_chars_per_line, max_lines)
+    local lines = {}
+    local current_line = ""
+
+    if not text or text == "" then
+        return lines
+    end
+
+    for part in string.gmatch(text, "[^,]+") do
+        local word = string.gsub(part, "^%s*(.-)%s*$", "%1")
+        if word ~= "" then
+            if current_line == "" then
+                current_line = word
+            elseif (#current_line + #word + 2) <= max_chars_per_line then
+                current_line = current_line .. ", " .. word
+            else
+                table.insert(lines, current_line)
+                current_line = word
+                if #lines >= max_lines then
+                    break
+                end
+            end
+        end
+    end
+
+    if #lines < max_lines and current_line ~= "" then
+        table.insert(lines, current_line)
+    end
+
+    if #lines == max_lines and text ~= table.concat(lines, ", ") then
+        local last = lines[max_lines]
+        if #last > max_chars_per_line - 3 then
+            last = string.sub(last, 1, max_chars_per_line - 3)
+        end
+        lines[max_lines] = last .. "..."
+    end
+
+    return lines
+end
+
+local function draw_status_block(x, y, text, color)
+    local lines = wrap_disable_flags_text(text, 16, 2)
+    if #lines == 0 then
+        lines = { "..." }
+    end
+
+    for i = 1, #lines do
+        lcd.drawText(x, y + ((i - 1) * 16), lines[i], SMLSIZE + color)
+    end
+end
+
+local function get_governor_state_text(gov_value, has_gov_sensor, throttle_value)
+    local gov_state_names = {
+        [0] = "OFF",
+        [1] = "IDLE",
+        [2] = "SPOOLUP",
+        [3] = "RECOVERY",
+        [4] = "ACTIVE",
+        [5] = "THR-OFF",
+        [6] = "LOST-HS",
+        [7] = "AUTOROT",
+        [8] = "BAILOUT",
+        [100] = "DISABLED",
+        [101] = "DISARMED"
+    }
+
+    if has_gov_sensor and gov_value ~= nil then
+        return gov_state_names[gov_value] or "UNKNOWN"
+    end
+
+    if throttle_value == nil then
+        return "UNKNOWN"
+    end
+
+    throttle_value = math.floor(tonumber(throttle_value) or 0)
+    if throttle_value <= 0 then
+        return "OFF"
+    end
+    if throttle_value <= 50 then
+        return "SPOOLUP"
+    end
+
+    return "ACTIVE"
+end
 local function draw_ring_progress(xs, ys, value, max_value, size)
     local radius = size
     local ring_width = 8
@@ -1661,8 +1797,7 @@ local function refresh(widget, event, touchState)
     local model_name = model.getInfo().name
     local current_time = getDateTime()
     local time_str = string.format("%02d:%02d:%02d", current_time.hour, current_time.min, current_time.sec)
-    lcd.drawText(630, 390,  widget.options.UserName, MIDSIZE + square_color)
-    lcd.drawText(500, 436, model_name, MIDSIZE + value_color)
+    lcd.drawText(770, 434, model_name, RIGHT + MIDSIZE + value_color)
     if tg_pic_obj then
            lcd.drawBitmap(tg_pic_obj, 530, 190)        
     else
@@ -1680,13 +1815,12 @@ local function refresh(widget, event, touchState)
     end
     lcd.drawText(682, 14, "Tx ", BOLD + square_color)
     lcd.drawText(714, 14, tx_battery_str, BOLD + tx_color)
-    lcd.drawText(316, 50, "RSSI" , CENTER + VCENTER + square_color)
     local rqly_percent = (field_id[10][2] and value_min_max[10][1]) or 0
-    rqly_signal_bars_ladder(344, 60, rqly_percent, lcd.RGB(80, 80, 80), 1.0)
+    rqly_signal_bars_ladder(316, 60, rqly_percent, lcd.RGB(80, 80, 80), 1.0)
     if rqly_percent > 0 then
-        lcd.drawText(430, 50, string.format("%ddB", rqly_percent), CENTER + VCENTER  + value_color)
+        lcd.drawText(452, 50, string.format("%ddB", rqly_percent), RIGHT + VCENTER + value_color)
     else
-        lcd.drawText(425, 50, "---", CENTER + VCENTER + MIDSIZE + RED)
+        lcd.drawText(452, 50, "---", RIGHT + VCENTER + MIDSIZE + RED)
     end
     local has_telemetry = false
     if field_id[10][2] then
@@ -1789,7 +1923,18 @@ local function refresh(widget, event, touchState)
     end
     lcd.drawText(175, 44, tostring(bank_info.current), CENTER + VCENTER + BOLD + MIDSIZE + bank_color)
     local arm_status = (field_id[13][2] and value_min_max[13][1]) or 0
-    local gov_status = (field_id[14][2] and value_min_max[14][1]) or 0
+    local gov_status = (field_id[14][2] and value_min_max[14][1]) or nil
+    local throttle_value = (field_id[11][2] and value_min_max[11][1]) or nil
+    local disable_flags = nil
+    if field_id[18][2] then
+        disable_flags = value_min_max[18][1]
+    end
+    if disable_flags == nil then
+        disable_flags = getValue("ARMD")
+    end
+    if disable_flags == nil then
+        disable_flags = getValue("Arming Disable")
+    end
     local is_armed = false
     if field_id[13][2] then
         is_armed = (arm_status == 1 or arm_status == 3)
@@ -1801,27 +1946,21 @@ local function refresh(widget, event, touchState)
         end
         last_arm_status = arm_status
     end
-    local gov_state_names = { "OFF", "IDLE", "SPOOLUP", "RECOVERY", "ACTIVE", "THR-OFF", "LOST-HS", "AUTOROT", "BAILOUT" }
-    if is_armed then
-        lcd.drawText(500,52, "GOV:", CENTER + VCENTER + square_color) 
-        if field_id[14][2] then
-            local gov_name = gov_state_names[gov_status + 1] or "UNK"
-            if gov_name == "SPOOLUP" then
-                lcd.drawText(582, 53, gov_name,BOLD+ CENTER + VCENTER +  value_color)
-            else
-                lcd.drawText(548, 53, gov_name,BOLD+ CENTER + VCENTER +  value_color)
-            end
-        else
-            lcd.drawText(582, 53, "ARMED", BOLD+CENTER + VCENTER +  GREEN)
-        end
-    else
-        lcd.drawText(500, 52, "ARM:", CENTER + VCENTER + square_color)
-        if field_id[13][2] then
-            lcd.drawText(582, 54, "DISARMED", BOLD+CENTER + VCENTER +   RED)
-        else
-            lcd.drawText(582, 54, "NO TELE", BOLD+ CENTER + VCENTER +   BLINK + RED)
-        end
+    local arm_status_text = "DISARMED"
+    local arm_status_color = RED
+    local disable_flags_text = arming_disable_flags_to_string(disable_flags)
+    if disable_flags_text ~= "OK" then
+        arm_status_text = disable_flags_text
+        arm_status_color = RED
+    elseif is_armed then
+        arm_status_text = "ARMED"
+        arm_status_color = YELLOW
+    elseif not field_id[13][2] then
+        arm_status_text = "NO TELE"
+        arm_status_color = RED + BLINK
     end
+    draw_status_block(480, 40, arm_status_text, arm_status_color)
+    local gov_text = get_governor_state_text(gov_status, field_id[14][2], throttle_value)
     local hold_active = false
     if widget.options.HoldSwitch ~= 0 then
         local switch_value = getSwitchValue(widget.options.HoldSwitch)
@@ -2023,7 +2162,9 @@ local function refresh(widget, event, touchState)
     end
     if display_mode == 0 then
 
-        lcd.drawText(330, 410, "TX16SMK3  Mini",  SMLSIZE+ square_color)
+        lcd.drawText(390, 400, widget.options.UserName, CENTER + BOLD + square_color)
+        lcd.drawText(550, 385, "Gov", BOLD + square_color)
+        lcd.drawText(600, 385, gov_text, LEFT + BOLD + value_color)
 
         local tmcu_value = (field_id[6][2] and value_min_max[6][1]) or 0
         draw_gauge_meter(125, 450, tmcu_value, 100, 100, value_color, square_color)
@@ -2059,8 +2200,6 @@ local function refresh(widget, event, touchState)
          draw_ring_progress(217, 395, current_flight_max_current, 300, 80)
          local flight_minutes = math.floor(second[1] % 3600 / 60)
          local flight_seconds = second[1] % 3600 % 60
-         draw_time_display(610, 100-30, flight_minutes, flight_seconds, 30, value_color)
-         lcd.drawText(553, 120-30, "Time",  square_color)
          local total_all_flights = 0
          local current_model_name = model.getInfo().name
          if telemetry_initialized and current_model_name and current_model_name ~= "" then
@@ -2093,13 +2232,16 @@ local function refresh(widget, event, touchState)
              end
          end
          local total_flight_count = flight_count + session_flight_count
-         lcd.drawText(554, 125, "Flight",  square_color)
+         lcd.drawText(554, 125, "Flight", BOLD + square_color)
          draw_digital_display(620, 130, total_all_flights, 4, 0, 13, value_color)
          if total_flight_count > 0 then
-            draw_digital_display(710, 130, total_flight_count, 3, 0, 13, value_color)
+            draw_digital_display(715, 130, total_flight_count, 3, 0, 13, value_color)
          else
-            draw_digital_display(710, 130, 0, 3, 0, 13, value_color)
+            draw_digital_display(715, 130, 0, 3, 0, 13, value_color)
          end
+
+         lcd.drawText(553, 120-30, "Time", BOLD + square_color)
+         draw_time_display(610, 100-30, flight_minutes, flight_seconds, 30, value_color)
     end
     if display_mode == 1 then
         lcd.drawFilledRectangle(0, 0, screen_width, screen_height, bg_color)
