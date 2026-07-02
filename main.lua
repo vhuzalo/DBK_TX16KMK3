@@ -1,5 +1,11 @@
 ﻿local NAME = "DBK_MK3Mini"
 local VERSION = "v1.0"
+local WIDGET_DIR = "DBK_TX16KMK3"
+local WIDGET_ROOT = "/WIDGETS/" .. WIDGET_DIR
+local IMAGE_ROOT = WIDGET_ROOT .. "/image"
+local MODEL_IMAGE_ROOT = WIDGET_ROOT .. "/modelImage"
+local LOG_ROOT = WIDGET_ROOT .. "/logs"
+local SYSTEM_LOG_ROOT = LOG_ROOT .. "/System"
 local TopValue = 10
 local crsf_field = { "Vbat", "Curr", "Hspd", "Capa", "Bat%", "Tesc", "Tmcu", "1RSS", "2RSS", "RQly", "Thr", "Vbec", "ARM", "Gov", "Vcel","Tmcu","PID#" }
 local TELE_ITEMS = #crsf_field
@@ -29,7 +35,7 @@ local selected_model_index = 1
 local viewing_model_name = ""
 local viewing_log_data = {}
 local viewing_fly_number = 0
-local model_index_file = "/WIDGETS/DBK_MK3Mini/logs/System/model_index.txt"
+local model_index_file = SYSTEM_LOG_ROOT .. "/model_index.txt"
 local file_name = ""
 local file_path = ""
 local file_obj
@@ -53,7 +59,7 @@ local last_arm_status = 0
 local session_flight_count = 0
 local current_flight_max_current = 0
 local led_cache = { last_start_color = 0, last_end_color = 0 }
--- 曲线记录功能已禁用
+-- Curve recording feature is disabled
 
 local rpm_buffer = {}
 local rpm_collect_timer = 0
@@ -64,13 +70,13 @@ local current_buffer = {}
 local current_start_time = ""
 local voltage_buffer = {}
 local voltage_start_time = ""
--- 分帧写入状态机: 0=空闲 1=写主日志 2=写rpm 3=写电流 4=写电压
+-- Multi-frame write state machine: 0=idle 1=write main log 2=write rpm 3=write current 4=write voltage
 local write_state = 0
 local write_snapshot = nil
--- 曲线图表数据缓存：进入图表视图时加载一次，退出时清除
+-- Chart data cache: load once when entering chart view, clear when leaving
 local chart_cache = nil
 local chart_cache_key = ""
--- 曲线绘制采样步长：1=每点都画(最细), 5=每5点画一条线(最快), 默认3
+-- Chart render sampling step: 1=draw every point (finest), 5=draw every 5th point (fastest), default 3
 local chart_render_step = 3
 
 local options = {
@@ -163,11 +169,11 @@ local function create(zone, options)
     signal_lost = false
     last_rqly_status = false
     telemetry_initialized = false
-    file_name = "[DBK_MK3Mini]" ..
+    file_name = "[" .. WIDGET_DIR .. "]" ..
         string.format("%d", getDateTime().year) ..
         string.format("%02d", getDateTime().mon) ..
         string.format("%02d", getDateTime().day) .. ".log"
-    file_path = "/WIDGETS/DBK_MK3Mini/logs/" .. file_name
+    file_path = LOG_ROOT .. "/" .. file_name
     local file_info = fstat(file_path)
     local read_count = 1
     if file_info ~= nil then
@@ -210,9 +216,9 @@ local function create(zone, options)
         sele_number = 1
         log_data[1] = "01|12:34:56|05:30|1850|025|2400|125.5|03500|25.2|22.8|+055|+025|+040|+020|-032|-072|-028|-065|100|095|080|12.6|11.8\n"
     end
-    default_pic_obj = Bitmap.open("/WIDGETS/DBK_MK3Mini/image/default.png")
-    hold1_pic_obj = Bitmap.open("/WIDGETS/DBK_MK3Mini/image/hold1.png")
-    hold2_pic_obj = Bitmap.open("/WIDGETS/DBK_MK3Mini/image/hold2.png")
+    default_pic_obj = Bitmap.open(IMAGE_ROOT .. "/default.png")
+    hold1_pic_obj = Bitmap.open(IMAGE_ROOT .. "/hold1.png")
+    hold2_pic_obj = Bitmap.open(IMAGE_ROOT .. "/hold2.png")
     local current_model = model.getInfo().name
     if current_model and current_model ~= "" then
         update_model_index(current_model)
@@ -229,7 +235,7 @@ local function get_total_flight_count(model_name)
         return 0
     end
     local safe_model_name = string.gsub(model_name, "[<>:\"/\\|?*]", "")
-    local total_file_path = "/WIDGETS/DBK_MK3Mini/logs/System/totalall_[" .. safe_model_name .. "].txt"
+    local total_file_path = SYSTEM_LOG_ROOT .. "/totalall_[" .. safe_model_name .. "].txt"
     local file_info = fstat(total_file_path)
     if file_info and file_info.size > 0 then
         local file = io.open(total_file_path, "r")
@@ -249,7 +255,7 @@ local function increment_total_flight_count(model_name)
         return
     end
     local safe_model_name = string.gsub(model_name, "[<>:\"/\\|?*]", "")
-    local total_file_path = "/WIDGETS/DBK_MK3Mini/logs/System/totalall_[" .. safe_model_name .. "].txt"
+    local total_file_path = SYSTEM_LOG_ROOT .. "/totalall_[" .. safe_model_name .. "].txt"
     local current_count = get_total_flight_count(model_name)
     local new_count = current_count + 1
     local file = io.open(total_file_path, "w")
@@ -289,7 +295,7 @@ local function scan_model_logs()
             if model_name ~= ">Rotorflight" and model_name ~= "" then
                 local safe_name = string.gsub(model_name, "[<>:\"/\\|?*]", "")
                 local file_name = "[".. safe_name .."]" .. date_str .. ".log"
-                local file_path = "/WIDGETS/DBK_MK3Mini/logs/" .. file_name
+                local file_path = LOG_ROOT .. "/" .. file_name
                 local file_info = fstat(file_path)
                 if file_info and file_info.size > 0 then
                     local file_obj = io.open(file_path, "r")
@@ -321,7 +327,7 @@ local function load_model_logs(model_name)
         string.format("%d", getDateTime().year) ..
         string.format("%02d", getDateTime().mon) ..
         string.format("%02d", getDateTime().day) .. ".log"
-    local file_path = "/WIDGETS/DBK_MK3Mini/logs/" .. file_name
+    local file_path = LOG_ROOT .. "/" .. file_name
     local file_info = fstat(file_path)
     if not file_info or file_info.size == 0 then
         return {fly_number = 0, log_data = {}}
@@ -342,7 +348,7 @@ local function load_model_logs(model_name)
     io.close(file_obj)
     return {fly_number = fly_number, log_data = log_data}
 end
--- 曲线记录功能已禁用 - write_rpm_data
+-- Curve recording feature is disabled - write_rpm_data
 
 local function write_rpm_data(model_name, flight_num, start_time, end_time, rpm_data)
     if not model_name or model_name == "" or #rpm_data == 0 then
@@ -353,7 +359,7 @@ local function write_rpm_data(model_name, flight_num, start_time, end_time, rpm_
         string.format("%d", getDateTime().year) ..
         string.format("%02d", getDateTime().mon) ..
         string.format("%02d", getDateTime().day) .. "_rpm.txt"
-    local file_path = "/WIDGETS/DBK_MK3Mini/logs/" .. file_name
+    local file_path = LOG_ROOT .. "/" .. file_name
     local file_obj = io.open(file_path, "a")
     if file_obj then
         io.write(file_obj, string.format("#%02d|%s|%s\n", flight_num, start_time, end_time))
@@ -364,7 +370,7 @@ local function write_rpm_data(model_name, flight_num, start_time, end_time, rpm_
     end
 end
 
--- 曲线记录功能已禁用 - write_current_data
+-- Curve recording feature is disabled - write_current_data
 
 local function write_current_data(model_name, flight_num, start_time, end_time, current_data)
     if not model_name or model_name == "" or #current_data == 0 then
@@ -375,7 +381,7 @@ local function write_current_data(model_name, flight_num, start_time, end_time, 
         string.format("%d", getDateTime().year) ..
         string.format("%02d", getDateTime().mon) ..
         string.format("%02d", getDateTime().day) .. "_electricity.txt"
-    local file_path = "/WIDGETS/DBK_MK3Mini/logs/" .. file_name
+    local file_path = LOG_ROOT .. "/" .. file_name
     local file_obj = io.open(file_path, "a")
     if file_obj then
         io.write(file_obj, string.format("#%02d|%s|%s\n", flight_num, start_time, end_time))
@@ -386,7 +392,7 @@ local function write_current_data(model_name, flight_num, start_time, end_time, 
     end
 end
 
--- 曲线记录功能已禁用 - write_voltage_data
+-- Curve recording feature is disabled - write_voltage_data
 
 local function write_voltage_data(model_name, flight_num, start_time, end_time, voltage_data)
     if not model_name or model_name == "" or #voltage_data == 0 then
@@ -397,7 +403,7 @@ local function write_voltage_data(model_name, flight_num, start_time, end_time, 
         string.format("%d", getDateTime().year) ..
         string.format("%02d", getDateTime().mon) ..
         string.format("%02d", getDateTime().day) .. "_volt.txt"
-    local file_path = "/WIDGETS/DBK_MK3Mini/logs/" .. file_name
+    local file_path = LOG_ROOT .. "/" .. file_name
     local file_obj = io.open(file_path, "a")
     if file_obj then
         io.write(file_obj, string.format("#%02d|%s|%s\n", flight_num, start_time, end_time))
@@ -408,7 +414,7 @@ local function write_voltage_data(model_name, flight_num, start_time, end_time, 
     end
 end
 
--- 曲线记录功能已禁用 - load_rpm_data
+-- Curve recording feature is disabled - load_rpm_data
 local function load_rpm_data(model_name, flight_num)
     if not model_name or model_name == "" then
         return nil
@@ -418,7 +424,7 @@ local function load_rpm_data(model_name, flight_num)
         string.format("%d", getDateTime().year) ..
         string.format("%02d", getDateTime().mon) ..
         string.format("%02d", getDateTime().day) .. "_rpm.txt"
-    local file_path = "/WIDGETS/DBK_MK3Mini/logs/" .. file_name
+    local file_path = LOG_ROOT .. "/" .. file_name
     local file_info = fstat(file_path)
     if not file_info or file_info.size == 0 then
         return nil
@@ -464,7 +470,7 @@ local function load_rpm_data(model_name, flight_num)
     }
 end
 
--- 曲线记录功能已禁用 - load_current_data
+-- Curve recording feature is disabled - load_current_data
 
 local function load_current_data(model_name, flight_num)
     if not model_name or model_name == "" then
@@ -475,7 +481,7 @@ local function load_current_data(model_name, flight_num)
         string.format("%d", getDateTime().year) ..
         string.format("%02d", getDateTime().mon) ..
         string.format("%02d", getDateTime().day) .. "_electricity.txt"
-    local file_path = "/WIDGETS/DBK_MK3Mini/logs/" .. file_name
+    local file_path = LOG_ROOT .. "/" .. file_name
     local file_info = fstat(file_path)
     if not file_info or file_info.size == 0 then
         return nil
@@ -521,7 +527,7 @@ local function load_current_data(model_name, flight_num)
     }
 end
 
--- 曲线记录功能已禁用 - load_voltage_data
+-- Curve recording feature is disabled - load_voltage_data
 
 local function load_voltage_data(model_name, flight_num)
     if not model_name or model_name == "" then
@@ -532,7 +538,7 @@ local function load_voltage_data(model_name, flight_num)
         string.format("%d", getDateTime().year) ..
         string.format("%02d", getDateTime().mon) ..
         string.format("%02d", getDateTime().day) .. "_volt.txt"
-    local file_path = "/WIDGETS/DBK_MK3Mini/logs/" .. file_name
+    local file_path = LOG_ROOT .. "/" .. file_name
     local file_info = fstat(file_path)
     if not file_info or file_info.size == 0 then
         return nil
@@ -1043,11 +1049,11 @@ local function draw_flight_log_list(model_name, log_data, fly_number,
                 "[ENTER] Details  [EXIT] Back",
                 CENTER + VCENTER + SMLSIZE + square_color)
 end
--- 曲线记录功能已禁用 - draw_rpm_chart
+-- Curve recording feature is disabled - draw_rpm_chart
 local function draw_rpm_chart(model_name, flight_num, square_color, value_color)
     local screen_width = LCD_W
     local screen_height = LCD_H
-    -- 缓存检查：相同机型+相同航次直接复用，不重复读文件
+    -- Cache check: reuse directly for the same model and same flight number, avoid rereading the file
     local cache_key = model_name .. "|" .. tostring(flight_num)
     if chart_cache == nil or chart_cache_key ~= cache_key then
         chart_cache = {
@@ -1191,7 +1197,7 @@ local function draw_rpm_chart(model_name, flight_num, square_color, value_color)
                 "Current(A)", SMLSIZE + RED)
     lcd.drawText(screen_width/2 + 70, chart_y + chart_height + 35,
                 "Volt(V)", SMLSIZE + BLUE)
-    -- 精度档位指示：显示当前步长，上下键可调
+    -- Precision level indicator: show current step size, adjustable with up/down keys
     local detail_labels = { "1-Max", "2-High", "3-Mid", "4-Low", "5-Min" }
    
     --lcd.drawText(screen_width - 10, chart_y + chart_height + 35,
@@ -1444,7 +1450,7 @@ local function refresh(widget, event, touchState)
                         playTone(200, 50, 100, PLAY_NOW)
                     end
                 elseif log_view_mode == 3 then
-                    -- 图表页：降低精度（步长+1，最大5），减少drawLine次数
+                    -- Chart page: reduce precision (step +1, max 5) to reduce drawLine calls
                     if chart_render_step < 5 then
                         chart_render_step = chart_render_step + 1
                         playTone(200, 50, 50, PLAY_NOW)
@@ -1472,7 +1478,7 @@ local function refresh(widget, event, touchState)
                         playTone(200, 50, 100, PLAY_NOW)
                     end
                 elseif log_view_mode == 3 then
-                    -- 图表页：提高精度（步长-1，最小1）
+                    -- Chart page: increase precision (step -1, min 1)
                     chart_render_step = 2
                  --   if chart_render_step > 1 then
                    --     chart_render_step = chart_render_step - 1
@@ -1501,7 +1507,7 @@ local function refresh(widget, event, touchState)
                         playTone(3000, 100, 50, PLAY_NOW)
                     end
                 elseif log_view_mode == 2 then
-                    -- 曲线记录功能已禁用 - 不再进入图表视图
+                    -- Curve recording feature is disabled - no longer enter chart view
                     
                     log_view_mode = 3
                     playTone(100, 200, 100, PLAY_NOW, 10)
@@ -1634,7 +1640,7 @@ local function refresh(widget, event, touchState)
     end
     lcd.drawFilledRectangle(0, 0, screen_width, screen_height, bg_color)
     if not bg_pic_obj then
-        bg_pic_obj = Bitmap.open("/WIDGETS/DBK_MK3Mini/image/background.png")
+        bg_pic_obj = Bitmap.open(IMAGE_ROOT .. "/background.png")
     end
     if bg_pic_obj then
         lcd.drawBitmap(bg_pic_obj, 0, 0)
@@ -1702,7 +1708,7 @@ local function refresh(widget, event, touchState)
     end
     if current_model_name ~= cached_model_name and current_model_name ~= "" and display_mode ~= 1 then
         cached_model_name = current_model_name
-        cached_pic_path = "/WIDGETS/DBK_MK3Mini/modelImage/"..string.sub(cached_model_name, 2)..".png"
+        cached_pic_path = MODEL_IMAGE_ROOT .. "/" .. string.sub(cached_model_name, 2) .. ".png"
         should_load_log = true
     end
     if should_load_log and current_model_name and current_model_name ~= "" then
@@ -1711,7 +1717,7 @@ local function refresh(widget, event, touchState)
             string.format("%d", getDateTime().year) ..
             string.format("%02d", getDateTime().mon) ..
             string.format("%02d", getDateTime().day) .. ".log"
-        local new_file_path = "/WIDGETS/DBK_MK3Mini/logs/" .. new_file_name
+        local new_file_path = LOG_ROOT .. "/" .. new_file_name
         if fstat(cached_pic_path) then
             tg_pic_obj = Bitmap.open(cached_pic_path)
         else
@@ -1846,7 +1852,7 @@ local function refresh(widget, event, touchState)
             power_max[1] = 0
             power_max[2] = 0
             write_en_flag = false
-            -- 曲线记录功能已禁用 - 初始化数据缓冲区
+            -- Curve recording feature is disabled - initialize data buffers
             
             rpm_buffer = {}
             rpm_collect_timer = 0
@@ -1876,7 +1882,7 @@ local function refresh(widget, event, touchState)
         if arm_flag then
             second[1] = second[1] + 1
             total_second = total_second + 1
-            -- 曲线记录功能已禁用 - 数据收集
+            -- Curve recording feature is disabled - data collection
             
             rpm_collect_timer = rpm_collect_timer + 1
             if rpm_collect_timer >= rpm_collect_interval then
@@ -1897,7 +1903,7 @@ local function refresh(widget, event, touchState)
     minutes[2] = string.format("%02d", math.floor(total_second % 3600 / 60))
     seconds[2] = string.format("%02d", total_second % 3600 % 60)
     if write_en_flag and fly_number < 57 and second[1] > 30 then
-        -- 当帧：只做数据准备，不做任何文件I/O
+        -- Current frame: prepare data only, do not perform any file I/O
         fly_number = fly_number + 1
         local end_time_str = string.format("%02d:%02d:%02d",
             getDateTime().hour, getDateTime().min, getDateTime().sec)
@@ -1933,7 +1939,7 @@ local function refresh(widget, event, touchState)
             string.format("%03d", value_min_max[11][2]) .. '|' ..
             string.format("%04.1f", value_min_max[12][2]) .. '|' ..
             string.format("%04.1f", value_min_max[12][3]) .. "\n"
-        -- 快照：保存所有写入所需数据，释放buffer引用（新的空表供下次飞行）
+        -- Snapshot: store all data needed for writing and release buffer references (new empty tables for the next flight)
         write_snapshot = {
             file_path  = file_path,
             log_info   = log_info,
@@ -1948,7 +1954,7 @@ local function refresh(widget, event, touchState)
         write_state = 1
         write_en_flag = false
         rpm_buffer = {};  current_buffer = {};  voltage_buffer = {}
-        -- 无大量I/O的收尾操作放在触发帧执行
+        -- Finalization work without heavy I/O runs in the trigger frame
         update_model_index(cached_model_name)
         session_flight_count = 0
         local current_model_name = model.getInfo().name
@@ -1965,9 +1971,9 @@ local function refresh(widget, event, touchState)
             sele_number = fly_number
         end
     end
-    -- 分帧写入状态机：每帧只完成一个文件的写入，避免单帧CPU超限
+    -- Multi-frame write state machine: complete only one file write per frame to avoid exceeding the CPU budget in a single frame
     if write_state == 1 and write_snapshot then
-        -- 帧1：写主日志文件（用table.concat一次性写入历史条目）
+        -- Frame 1: write the main log file (use table.concat to write historical entries in one shot)
         local f = io.open(write_snapshot.file_path, "w")
         if f then
             io.write(f, write_snapshot.log_info)
@@ -1979,21 +1985,21 @@ local function refresh(widget, event, touchState)
         end
         write_state = 2
     elseif write_state == 2 and write_snapshot then
-        -- 帧2：写RPM曲线文件
+        -- Frame 2: write the RPM curve file
         if #write_snapshot.rpm_buf > 0 then
             write_rpm_data(write_snapshot.model_name, write_snapshot.fly_number,
                 write_snapshot.rpm_start, write_snapshot.end_time, write_snapshot.rpm_buf)
         end
         write_state = 3
     elseif write_state == 3 and write_snapshot then
-        -- 帧3：写电流曲线文件
+        -- Frame 3: write the current curve file
         if #write_snapshot.cur_buf > 0 then
             write_current_data(write_snapshot.model_name, write_snapshot.fly_number,
                 write_snapshot.cur_start, write_snapshot.end_time, write_snapshot.cur_buf)
         end
         write_state = 4
     elseif write_state == 4 and write_snapshot then
-        -- 帧4：写电压曲线文件，完成后释放快照
+        -- Frame 4: write the voltage curve file, then release the snapshot
         if #write_snapshot.volt_buf > 0 then
             write_voltage_data(write_snapshot.model_name, write_snapshot.fly_number,
                 write_snapshot.volt_start, write_snapshot.end_time, write_snapshot.volt_buf)
@@ -2055,7 +2061,7 @@ local function refresh(widget, event, touchState)
                      string.format("%d", getDateTime().year) ..
                      string.format("%02d", getDateTime().mon) ..
                      string.format("%02d", getDateTime().day) .. ".log"
-                 local target_file_path = "/WIDGETS/DBK_MK3Mini/logs/" .. target_file_name
+                 local target_file_path = LOG_ROOT .. "/" .. target_file_name
                  local file_info = fstat(target_file_path)
                  if file_info ~= nil and file_info.size > 0 then
                      local temp_file_obj = io.open(target_file_path, "r")
@@ -2103,7 +2109,7 @@ local function refresh(widget, event, touchState)
                             CENTER + VCENTER + SMLSIZE + square_color)
             end
         elseif log_view_mode == 3 then
-            -- 曲线记录功能已禁用
+            -- Curve recording feature is disabled
             
             draw_rpm_chart(viewing_model_name, sele_number, square_color, value_color)
             
