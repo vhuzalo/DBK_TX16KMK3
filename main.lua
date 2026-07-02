@@ -88,6 +88,13 @@ local options = {
     { "UserName", STRING, "DBK" }
 }
 local radioH = 0
+local function build_default_log_info()
+    return string.format("%d", getDateTime().year) .. '/' ..
+        string.format("%02d", getDateTime().mon) .. '/' ..
+        string.format("%02d", getDateTime().day) .. '|' ..
+        "00:00:00" .. '|' ..
+        "00\n"
+end
 local function load_model_index()
     local models = {}
     local file_info = fstat(model_index_file)
@@ -180,33 +187,37 @@ local function create(zone, options)
     if file_info ~= nil then
         if file_info.size > 0 then
             file_obj = io.open(file_path, "r")
-            log_info = io.read(file_obj, LOG_INFO_LEN + 1)
-            while true do
-                log_data[read_count] = io.read(file_obj, LOG_DATA_LEN + 1)
-                if #log_data[read_count] == 0 then
-                    break
-                else
-                    read_count = read_count + 1
+            if file_obj then
+                log_info = io.read(file_obj, LOG_INFO_LEN + 1)
+                while true do
+                    log_data[read_count] = io.read(file_obj, LOG_DATA_LEN + 1)
+                    if #log_data[read_count] == 0 then
+                        break
+                    else
+                        read_count = read_count + 1
+                    end
                 end
+                io.close(file_obj)
+                hours = string.sub(log_info, 12, 13)
+                minutes[2] = string.sub(log_info, 15, 16)
+                seconds[2] = string.sub(log_info, 18, 19)
+                total_second = tonumber(string.sub(log_info, 12, 13)) * 3600
+                total_second = total_second + tonumber(string.sub(log_info, 15, 16)) * 60
+                total_second = total_second + tonumber(string.sub(log_info, 18, 19))
+            else
+                log_info = build_default_log_info()
+                log_data = {}
             end
-            io.close(file_obj)
-            hours = string.sub(log_info, 12, 13)
-            minutes[2] = string.sub(log_info, 15, 16)
-            seconds[2] = string.sub(log_info, 18, 19)
-            total_second = tonumber(string.sub(log_info, 12, 13)) * 3600
-            total_second = total_second + tonumber(string.sub(log_info, 15, 16)) * 60
-            total_second = total_second + tonumber(string.sub(log_info, 18, 19))
+        else
+            log_info = build_default_log_info()
         end
     else
         file_obj = io.open(file_path, "w")
-        log_info =
-            string.format("%d", getDateTime().year) .. '/' ..
-            string.format("%02d", getDateTime().mon) .. '/' ..
-            string.format("%02d", getDateTime().day) .. '|' ..
-            "00:00:00" .. '|' ..
-            "00\n"
-        io.write(file_obj, log_info)
-        io.close(file_obj)
+        log_info = build_default_log_info()
+        if file_obj then
+            io.write(file_obj, log_info)
+            io.close(file_obj)
+        end
     end
     local str_temp = string.sub(log_info, 21, 23)
     if tonumber(str_temp) ~= nil then
