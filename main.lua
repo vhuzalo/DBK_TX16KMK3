@@ -1,4 +1,4 @@
-﻿local NAME = "DBK_MK3Mini"
+﻿local NAME = "DBK_TX16KMK3"
 local VERSION = "v1.0"
 local WIDGET_DIR = "DBK_TX16KMK3"
 local WIDGET_ROOT = "/WIDGETS/" .. WIDGET_DIR
