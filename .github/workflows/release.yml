@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build release package
+        id: build_release_package
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TAG_NAME="${GITHUB_REF_NAME:-manual}"
+          PACKAGE_ROOT="dist/DBK_TX16KMK3"
+          ASSET_NAME="DBK_TX16KMK3-${TAG_NAME}.zip"
+
+          rm -rf dist
+          mkdir -p "${PACKAGE_ROOT}"
+
+          cp main.lua "${PACKAGE_ROOT}/"
+          cp README.md "${PACKAGE_ROOT}/"
+          cp SettingScript.txt "${PACKAGE_ROOT}/"
+          cp -R Image "${PACKAGE_ROOT}/"
+          cp -R modelImage "${PACKAGE_ROOT}/"
+          cp -R logs "${PACKAGE_ROOT}/"
+
+          (
+            cd dist
+            zip -r "../${ASSET_NAME}" "DBK_TX16KMK3"
+          )
+
+          echo "asset_name=${ASSET_NAME}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload release package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.build_release_package.outputs.asset_name }}
+          path: ${{ steps.build_release_package.outputs.asset_name }}
+
+      - name: Create GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" "${{ steps.build_release_package.outputs.asset_name }}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes
