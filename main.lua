@@ -6,6 +6,7 @@ local IMAGE_ROOT = WIDGET_ROOT .. "/image"
 local MODEL_IMAGE_ROOT = WIDGET_ROOT .. "/modelImage"
 local LOG_ROOT = WIDGET_ROOT .. "/logs"
 local SYSTEM_LOG_ROOT = LOG_ROOT .. "/System"
+local ENABLE_FLIGHT_REPORT_POPUP = false
 local TopValue = 10
 local crsf_field = { "Vbat", "Curr", "Hspd", "Capa", "Bat%", "Tesc", "Tmcu", "1RSS", "2RSS", "RQly", "Thr", "Vbec", "ARM", "Gov", "Vcel","Tmcu","PID#" }
 local TELE_ITEMS = #crsf_field
@@ -1688,13 +1689,15 @@ local function refresh(widget, event, touchState)
     end
     if telemetry_initialized == true then
         if has_telemetry == false and last_rqly_status == true then
-            signal_lost = true
+            signal_lost = ENABLE_FLIGHT_REPORT_POPUP
             last_rqly_status = false
             signal_lost_data.model_name = cached_model_name
             signal_lost_data.flight_time = string.format("%02d:%02d", math.floor(second[1] % 3600 / 60), second[1] % 3600 % 60)
             signal_lost_data.max_power = power_max[1]
             signal_lost_data.max_current = value_min_max[2][2]
-            playTone(2000, 300, 100, PLAY_NOW)
+            if ENABLE_FLIGHT_REPORT_POPUP then
+                playTone(2000, 300, 100, PLAY_NOW)
+            end
         elseif has_telemetry == true then
             last_rqly_status = true
             signal_lost = false
@@ -2115,7 +2118,7 @@ local function refresh(widget, event, touchState)
             
         end
  end
-    if signal_lost then
+    if ENABLE_FLIGHT_REPORT_POPUP and signal_lost then
         popup_button_positions = draw_flight_report_popup(screen_width / 2, screen_height / 2, signal_lost_data, value_color, square_color)
     end
 end
