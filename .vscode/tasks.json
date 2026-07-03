@@ -1,0 +1,38 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Deploy para pasta do radio",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\.vscode\\deploy-radio.ps1",
+        "-Source",
+        "${workspaceFolder}",
+        "-RadioRoot",
+        "${input:radioRoot}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "radioRoot",
+      "type": "promptString",
+      "description": "Pasta raiz do cartao SD do radio",
+      "default": "E:\\"
+    }
+  ]
+}
