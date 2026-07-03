@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="Image/mk3.png" alt="DBK TX16 MK3" width="420"/>
+  <img src="Image/readme-preview.png" alt="DBK TX16 MK3" width="420"/>
 </div>
 
 # DBK_TX16KMK3
@@ -49,6 +49,15 @@ O foco deste projeto é entregar uma tela principal limpa, legível e otimizada 
 - Cartão SD com suporte a widgets Lua
 
 ## Instalação
+
+Você pode baixar a versão mais recente em `.zip` por este link:
+
+[Baixar DBK_TX16KMK3 v1.0.1 (.zip)](https://github.com/vhuzalo/DBK_TX16KMK3/archive/refs/tags/v1.0.1.zip)
+
+Depois de baixar:
+
+1. Extraia o arquivo `.zip`.
+2. Copie a pasta `DBK_TX16KMK3` para o cartão SD do rádio.
 
 Copie o conteúdo deste projeto para a seguinte pasta do cartão SD:
 
