@@ -1,9 +1,9 @@
 local NAME = "DBK_TX16KMK3"
-local VERSION = "v1.0"
+local VERSION = "v1.0.1"
 local WIDGET_DIR = "DBK_TX16KMK3"
 local WIDGET_ROOT = "/WIDGETS/" .. WIDGET_DIR
 local IMAGE_ROOT = WIDGET_ROOT .. "/image"
-local MODEL_IMAGE_ROOT = WIDGET_ROOT .. "/modelImage"
+local MODEL_IMAGE_ROOT = "/IMAGES"
 local AUDIO_ROOT = WIDGET_ROOT .. "/audio"
 local LOG_ROOT = WIDGET_ROOT .. "/logs"
 local SYSTEM_LOG_ROOT = LOG_ROOT .. "/System"
@@ -43,7 +43,7 @@ local arm_flag = false
 local last_arm_status = 0
 local session_flight_count = 0
 local current_flight_max_current = 0
-local led_cache = { last_start_color = 0, last_end_color = 0 }
+local led_cache = { mode = "", phase = -1 }
 local low_battery_alert_active = false
 local low_battery_alert_time = 0
 local last_arm_audio_state = nil
@@ -109,6 +109,94 @@ local function build_default_log_info()
         "00:00:00" .. '|' ..
         "00\n"
 end
+
+local function set_led_strip_off()
+    for i = 0, LED_STRIP_LENGTH - 1 do
+        setRGBLedColor(i, 0, 0, 0)
+    end
+    applyRGBLedColors()
+end
+
+local function set_led_strip_solid(red, green, blue)
+    for i = 0, LED_STRIP_LENGTH - 1 do
+        setRGBLedColor(i, red, green, blue)
+    end
+    applyRGBLedColors()
+end
+
+local function set_led_strip_circulating_red(phase)
+    local half_length = math.max(1, math.floor(LED_STRIP_LENGTH / 2))
+    local bar_colors = {
+        { 255, 0, 0 },
+        { 224, 0, 0 },
+        { 176, 0, 0 },
+        { 128, 0, 0 },
+        { 80, 0, 0 },
+        { 48, 0, 0 }
+    }
+    local travel_length = math.max(1, half_length - 1)
+    local cycle_length = math.max(1, (travel_length * 2))
+    local scanner_position = phase % cycle_length
+
+    if scanner_position >= travel_length then
+        scanner_position = cycle_length - scanner_position
+    end
+
+    for i = 0, LED_STRIP_LENGTH - 1 do
+        setRGBLedColor(i, 8, 0, 0)
+    end
+
+    for strip_index = 0, 1 do
+        local strip_offset = strip_index * half_length
+
+        for trail_index = 1, #bar_colors do
+            local led_index = strip_offset + scanner_position + trail_index - 1
+            if led_index < strip_offset + half_length and led_index < LED_STRIP_LENGTH then
+                local color = bar_colors[trail_index]
+                setRGBLedColor(led_index, color[1], color[2], color[3])
+            end
+        end
+    end
+
+    applyRGBLedColors()
+end
+
+local function update_led_strip(widget, is_armed, has_disable_flags)
+    if not LED_STRIP_LENGTH or LED_STRIP_LENGTH <= 0 then
+        return
+    end
+
+    if widget.options.DispLED ~= 1 then
+        if led_cache.mode ~= "OFF" then
+            led_cache.mode = "OFF"
+            led_cache.phase = -1
+            set_led_strip_off()
+        end
+        return
+    end
+
+    if has_disable_flags then
+        local phase = math.floor(getTime() / 2)
+        if led_cache.mode ~= "DISABLE" or led_cache.phase ~= phase then
+            led_cache.mode = "DISABLE"
+            led_cache.phase = phase
+            set_led_strip_circulating_red(phase)
+        end
+    elseif is_armed then
+        if led_cache.mode ~= "ARMED" then
+            led_cache.mode = "ARMED"
+            led_cache.phase = -1
+            set_led_strip_solid(0, 80, 255)
+        end
+    else
+        if led_cache.mode ~= "DISARMED" then
+            led_cache.mode = "DISARMED"
+            led_cache.phase = -1
+            set_led_strip_solid(255, 0, 0)
+        end
+    end
+end
+
 local function load_model_index()
     local models = {}
     local file_info = fstat(model_index_file)
@@ -334,10 +422,12 @@ local function update_profile_audio(profile_value, has_profile_sensor)
     end
 
     if profile_audio_state ~= last_profile_audio_state then
-        play_widget_audio("profile.wav")
-        local profile_number_audio_file = get_profile_number_audio_file(profile_audio_state)
-        if profile_number_audio_file then
-            play_widget_audio(profile_number_audio_file)
+        if profile_audio_state > 0 then
+            play_widget_audio("profile.wav")
+            local profile_number_audio_file = get_profile_number_audio_file(profile_audio_state)
+            if profile_number_audio_file then
+                play_widget_audio(profile_number_audio_file)
+            end
         end
         last_profile_audio_state = profile_audio_state
     end
@@ -989,42 +1079,6 @@ local function refresh(widget, event, touchState)
     local square_color = lcd.getColor(CUSTOM_COLOR)
     lcd.setColor(CUSTOM_COLOR, widget.options.ValueColor)
     local value_color = lcd.getColor(CUSTOM_COLOR)
-    if LED_STRIP_LENGTH and LED_STRIP_LENGTH > 0 then
-        if widget.options.DispLED == 1 then
-            local start_color = widget.options.SquareColor
-            local end_color = widget.options.ValueColor
-            if led_cache.last_start_color ~= start_color or led_cache.last_end_color ~= end_color then
-                led_cache.last_start_color = start_color
-                led_cache.last_end_color = end_color
-                local start_rgb565 = math.floor(start_color / 65536)
-                local start_red = math.floor(start_rgb565 / 2048) * 8
-                local start_green = (math.floor(start_rgb565 / 32) % 64) * 4
-                local start_blue = (start_rgb565 % 32) * 8
-                local end_rgb565 = math.floor(end_color / 65536)
-                local end_red = math.floor(end_rgb565 / 2048) * 8
-                local end_green = (math.floor(end_rgb565 / 32) % 64) * 4
-                local end_blue = (end_rgb565 % 32) * 8
-                for i = 0, LED_STRIP_LENGTH - 1 do
-                    local ratio = 0.5
-                    local ratio = (i % 2) / 1
-                    local red = start_red + (end_red - start_red) * ratio
-                    local green = start_green + (end_green - start_green) * ratio
-                    local blue = start_blue + (end_blue - start_blue) * ratio
-                    setRGBLedColor(i, math.floor(red), math.floor(green), math.floor(blue))
-                end
-                applyRGBLedColors()
-            end
-        else
-            if led_cache.last_start_color ~= 0 or led_cache.last_end_color ~= 0 then
-                led_cache.last_start_color = 0
-                led_cache.last_end_color = 0
-                for i = 0, LED_STRIP_LENGTH - 1 do
-                    setRGBLedColor(i, 0, 0, 0)
-                end
-                applyRGBLedColors()
-            end
-        end
-    end
     lcd.drawFilledRectangle(0, 0, screen_width, screen_height, bg_color)
     if not bg_pic_obj then
         bg_pic_obj = Bitmap.open(IMAGE_ROOT .. "/background.png")
@@ -1208,6 +1262,7 @@ local function refresh(widget, event, touchState)
         arm_status_text = "NO TELE"
         arm_status_color = RED + BLINK
     end
+    update_led_strip(widget, is_armed, disable_flags_text ~= "OK")
     draw_status_block(480, 40, arm_status_text, arm_status_color)
     local gov_text = get_governor_state_text(gov_status, field_id[14][2], throttle_value)
     update_profile_audio(bank_info.current, field_id[17][2])
