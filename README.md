@@ -1,64 +1,182 @@
 <div align="center">
-  <img src="Image/mk3.png" alt="Rotorflight  Logo" width="420"/>
+  <img src="Image/mk3.png" alt="DBK TX16 MK3" width="420"/>
 </div>
 
-# Rotorflight  Telemetry Widget for RadioMaster TX16 MK3 MINI
+# DBK_TX16KMK3
 
-A comprehensive telemetry display widget designed specifically for the Rotorflight  helicopter when used with the RadioMaster TX16 MK3 transmitter.
+Widget de telemetria para **EdgeTX** voltado ao uso com **Rotorflight** em rádios da linha **RadioMaster TX16 MK3**.
 
-## State
+O foco deste projeto é entregar uma tela principal limpa, legível e otimizada para helicópteros, com informações de voo, estado de arm, governor, alertas sonoros e integração com as imagens do modelo no cartão SD.
 
-  It is currently under testing and will be available to everyone soon.
+## Funcionalidades
 
-## Overview
+- Tela principal em layout dedicado para TX16 MK3
+- Exibição em tempo real de:
+  - RSSI/link quality
+  - RPM
+  - tensão principal
+  - tensão por célula
+  - tensão de BEC
+  - temperatura
+  - corrente
+  - consumo de bateria
+  - percentual de bateria
+- Status de `ARM` com prioridade para `disable flags`
+- Exibição do estado do `Governor`
+- Contador de voos e timer de voo
+- Nome do piloto usando o `OwnerID`/dados do rádio, com fallback para a configuração do widget
+- Alertas sonoros para:
+  - armado
+  - desarmado
+  - governor `OFF`
+  - governor `SPOOLUP`
+  - governor `ACTIVE`
+  - mudança de profile
+  - bateria baixa
+- Alerta háptico triplo para bateria baixa
+- Controle opcional dos LEDs do rádio:
+  - azul quando armado
+  - vermelho quando desarmado
+  - animação vermelha em caso de `disable flag`
+- Uso das imagens do modelo a partir da pasta `/IMAGES` do cartão SD
+- Timer de voo por sessão
+- Contagem de voos por modelo
 
-This Lua script provides real-time telemetry monitoring for your Rotorflight , displaying critical flight parameters in an easy-to-read format optimized for the TX16 MK3 screen. Simply copy to your SD card "DBK_MK3Mini" and activate in App Mode.
+## Requisitos
 
-## Features
+- Rádio compatível com **EdgeTX**
+- Rotorflight com telemetria CRSF funcionando
+- Cartão SD com suporte a widgets Lua
 
-- **Helicopter-Specific Layout**: Tailored display for RadioMaster Nexus-X/XR parameters
-- **Real-Time Telemetry**: Live updates of voltage, RPM, temperature, and signal
-- **App Mode Optimization**: Full-screen display without transmitter UI clutter
-- **Low Battery Alerts**: Visual and audio warnings (configurable thresholds)
-- **RSS Signal Monitoring**: Signal strength bar with loss counter
-- **Flight Timer Integration**: Automatic timer start/stop based on throttle
-- **Flight log recording function**: displaying rotational speed, battery consumption, and performance rate curve function, for better analysis of battery performance parameters.
-- **Vibration analysis**: provides real-time feedback on vibration information, assisting you in diagnosing the vibration sources of the machine.
-- **flight parameters**:The setting of flight parameters does not require entering the RF adjustment script interface. It can be directly set within this script interface.
+## Instalação
 
-<div align="left">
-  <a href="https://youtu.be/nG3YtrRB46Q">
-    <img src="Image/video.png" alt="DBK Series RadioMaster TX16MK3 Mini Remote Controller Telemetry Return Interface Sharing" width="620"/>
-  </a>
-</div>
+Copie o conteúdo deste projeto para a seguinte pasta do cartão SD:
 
+```text
+/WIDGETS/DBK_TX16KMK3/
+```
 
-# Rotorflight  Telemetry Widget for RadioMaster TX16 MK3 PRO 
-Under testing. It will be available to everyone soon.
+Os arquivos principais do widget devem ficar assim:
 
-## Features
-The PRO version has been optimized compared to the Mini version. It now offers better functionality for viewing models and flight logs. It allows for a convenient way to see how many models the remote control has flown, and also enables the display of each model categorized by date. The visual experience has been enhanced.
+```text
+/WIDGETS/DBK_TX16KMK3/main.lua
+/WIDGETS/DBK_TX16KMK3/audio/
+/WIDGETS/DBK_TX16KMK3/Image/
+```
 
-Donate
-If you find DBK Telemetry Script useful, please consider supporting the development by donating via PayPal: aliuge2000@163.com
-When donating, feel free to include your email address — I will send you new features for early testing!
+Depois no rádio:
 
-<table>
-  <tr>
-    <td width="320"><img src="Image/1.jpg" width="300" /></td>
-    <td width="320"><img src="Image/2.jpg" width="300" /></td>
-  </tr>
-  <tr>
-    <td width="320"><img src="Image/3.jpg" width="300" /></td>
-    <td width="320"><img src="Image/4.jpg" width="300" /></td>
-  </tr>
-   
-</table>
- 
+1. Abra a página onde deseja usar o widget.
+2. Escolha um layout com suporte a widget em tela cheia.
+3. Selecione o widget `DBK_TX16KMK3`.
+4. Ajuste as opções conforme necessário.
 
-<div align="left">
-  <a href="https://youtu.be/BFNSgTWkT-o">
-    <img src="Image/video.png" alt="DBK Series RadioMaster TX16MK3Pro Remote Controller Telemetry Return Interface Sharing" width="620"/>
-  </a>
-</div>
- 
+## Imagens dos modelos
+
+As imagens dos modelos agora são carregadas da pasta:
+
+```text
+/IMAGES/
+```
+
+O nome do arquivo deve corresponder ao nome do modelo no rádio, normalmente **sem o primeiro caractere `>`** quando ele existir.
+
+Exemplo:
+
+- Nome do modelo no rádio: `>GOOSKYRS4`
+- Arquivo da imagem: `/IMAGES/GOOSKYRS4.png`
+
+Se a imagem do modelo não for encontrada, o widget usa a imagem padrão interna.
+
+## Configuração do widget
+
+O widget possui as seguintes opções:
+
+- `SquareColor`: cor dos textos e elementos secundários
+- `ValueColor`: cor dos valores principais
+- `DispLED`: habilita ou desabilita os LEDs do rádio
+- `HoldSwitch`: chave usada para congelar mínimos e máximos
+- `UserName`: nome de fallback caso o rádio não forneça `OwnerID`
+- `BatAlertPct`: percentual de bateria para disparo do alerta de bateria baixa
+
+O valor padrão inicial para `BatAlertPct` é `25`.
+
+## Telemetria esperada
+
+O widget foi preparado para trabalhar com sensores Rotorflight/CRSF como:
+
+- `Vbat`
+- `Curr`
+- `Hspd`
+- `Capa`
+- `Bat%`
+- `Tesc`
+- `1RSS`
+- `RQly`
+- `Thr`
+- `Vbec`
+- `ARM`
+- `Gov`
+- `Vcel`
+- `PID#`
+- `ARMD`
+
+Uma forma simples de habilitar todos os sensores necessários é executar este comando no CLI:
+
+```text
+set telemetry_sensors = 3,4,5,6,7,8,43,50,60,88,90,91,99,95,96,15,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+```
+
+## Alertas e comportamento
+
+### Timer de voo
+
+O campo `Time` mostra o tempo do voo atual.
+
+- o timer começa a contar quando o modelo entra em estado armado
+- o timer para quando o modelo é desarmado
+- ele representa o tempo da sessão de voo atual, não um acumulado total do rádio
+
+Isso permite usar o timer como referência rápida do voo em andamento, especialmente para gerenciamento de bateria.
+
+### Contagem de voos por modelo
+
+O campo `Flight` mostra dois contadores:
+
+- o valor da esquerda representa o total acumulado de voos daquele modelo no rádio
+- o valor da direita representa a quantidade de voos registrada para o modelo no contexto atual exibido pelo widget
+
+Na prática, a contagem é feita por modelo, então cada aeronave mantém seu próprio histórico separado.
+
+Um novo voo só é contabilizado quando há um ciclo válido de voo, evitando contagens indevidas em arm/desarm muito curtos.
+
+### ARM e disable flags
+
+- Quando houver `disable flags`, o texto de bloqueio tem prioridade sobre `ARMED`
+- O campo usa a mesma área visual do status de arm
+- `disable flags` aparecem em vermelho
+- `ARMED` aparece em amarelo
+
+### Governor
+
+O estado do governor pode ser obtido:
+
+- diretamente do sensor `Gov`, quando disponível
+- ou inferido a partir do throttle, seguindo a lógica já usada no RFMONO
+
+### Bateria baixa
+
+Quando a bateria atinge o percentual configurado:
+
+- o widget toca o áudio de alerta
+- dispara 3 pulsos de haptic
+
+## Observações
+
+- Este projeto é voltado para **EdgeTX**, não Ethos
+- A pasta `.vscode/` não faz parte da instalação no rádio
+- A pasta `modelImage/` deixou de ser a origem principal das imagens dos modelos
+
+## Versão
+
+Versão atual do widget: **v1.0.1**
