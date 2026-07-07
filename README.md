@@ -62,7 +62,7 @@ O foco deste projeto é entregar uma tela principal limpa, legível e otimizada 
 
 Você pode baixar a versão mais recente em `.zip` por este link:
 
-[Baixar DBK_TX16KMK3 v1.0.1 (.zip)](https://github.com/vhuzalo/DBK_TX16KMK3/archive/refs/tags/v1.0.1.zip)
+[Baixar DBK_TX16KMK3 v1.0.2 (.zip)](https://github.com/vhuzalo/DBK_TX16KMK3/archive/refs/tags/v1.0.2.zip)
 
 Depois de baixar:
 
@@ -160,6 +160,16 @@ battery_alert_interval = 10
 
 Na inicialização, se `/WIDGETS/DBK_TX16KMK3_config.json` não existir ou estiver vazio, o próprio widget tenta criar esse arquivo automaticamente com os valores padrão.
 
+## Novidades da v1.0.2
+
+- `BatAlertPct` passou a usar entrada numérica para facilitar ajuste pelo scroller
+- nome do piloto saiu da configuração do widget e foi movido para arquivo JSON no SD
+- novo arquivo `/WIDGETS/DBK_TX16KMK3_config.json` para configurações persistentes fora da pasta do widget
+- suporte às chaves `pilot_name`, `battery_alert_pct` e `battery_alert_interval`
+- criação automática do arquivo de configuração com valores padrão quando ele não existir ou estiver vazio
+- recarga dinâmica da configuração em tempo de execução
+- extração da lógica de configuração para `config.lua`, deixando o `main.lua` mais limpo
+
 ## Telemetria esperada
 
 O widget foi preparado para trabalhar com sensores Rotorflight/CRSF como:
@@ -238,4 +248,4 @@ Quando a bateria atinge o percentual configurado:
 
 ## Versão
 
-Versão atual do widget: **v1.0.1**
+Versão atual do widget: **v1.0.2**
