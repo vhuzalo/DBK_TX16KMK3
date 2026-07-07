@@ -4,6 +4,16 @@
 
 # DBK_TX16KMK3
 
+> Esta versao e uma adaptacao baseada no projeto/fork original `DBK` para a plataforma **TX16 MK3**, com ajustes e evolucoes para este repositorio.
+>
+> Fica aqui o agradecimento ao criador original pelo trabalho inicial, pela ideia do layout e pela base que tornou esta continuacao possivel.
+>
+> Se o projeto original tambem foi util para voce, considere prestigiar e apoiar o autor original da mesma forma sugerida por ele, inclusive com doacao quando essa opcao estiver disponivel.
+>
+> **Donate**  
+> If you find DBK Telemetry Script useful, please consider supporting the development by donating via PayPal: `aliuge2000@163.com`  
+> When donating, feel free to include your email address — I will send you new features for early testing!
+
 Widget de telemetria para **EdgeTX** voltado ao uso com **Rotorflight** em rádios da linha **RadioMaster TX16 MK3**.
 
 O foco deste projeto é entregar uma tela principal limpa, legível e otimizada para helicópteros, com informações de voo, estado de arm, governor, alertas sonoros e integração com as imagens do modelo no cartão SD.
