@@ -34,7 +34,7 @@ O foco deste projeto é entregar uma tela principal limpa, legível e otimizada 
 - Status de `ARM` com prioridade para `disable flags`
 - Exibição do estado do `Governor`
 - Contador de voos e timer de voo
-- Nome do piloto usando o `OwnerID`/dados do rádio, com fallback para a configuração do widget
+- Nome do piloto usando arquivo de configuração no cartão SD
 - Alertas sonoros para:
   - armado
   - desarmado
@@ -79,8 +79,15 @@ Os arquivos principais do widget devem ficar assim:
 
 ```text
 /WIDGETS/DBK_TX16KMK3/main.lua
+/WIDGETS/DBK_TX16KMK3/config.lua
 /WIDGETS/DBK_TX16KMK3/audio/
 /WIDGETS/DBK_TX16KMK3/Image/
+```
+
+Para configurar o nome do piloto exibido no rodapé do widget, crie também o arquivo:
+
+```text
+/WIDGETS/DBK_TX16KMK3_config.json
 ```
 
 Depois no rádio:
@@ -115,10 +122,43 @@ O widget possui as seguintes opções:
 - `ValueColor`: cor dos valores principais
 - `DispLED`: habilita ou desabilita os LEDs do rádio
 - `HoldSwitch`: chave usada para congelar mínimos e máximos
-- `UserName`: nome de fallback caso o rádio não forneça `OwnerID`
 - `BatAlertPct`: percentual de bateria para disparo do alerta de bateria baixa
 
-O valor padrão inicial para `BatAlertPct` é `25`.
+O valor padrão inicial para `BatAlertPct` vem de `battery_alert_pct` no arquivo de configuração. Se essa chave não existir, o padrão usado é `25`.
+
+## Configuração em JSON
+
+O widget lê configurações do arquivo:
+
+```text
+/WIDGETS/DBK_TX16KMK3_config.json
+```
+
+Atualmente ele suporta estas chaves:
+
+- `pilot_name`: nome mostrado no rodapé
+- `battery_alert_pct`: percentual padrão do alerta de bateria
+- `battery_alert_interval`: intervalo entre alertas de bateria baixa, em segundos
+
+Exemplo:
+
+```json
+{
+  "pilot_name": "Victor",
+  "battery_alert_pct": 25,
+  "battery_alert_interval": 10
+}
+```
+
+Se o arquivo não existir, estiver vazio, ou não trouxer alguma dessas chaves, o widget usa os seguintes padrões:
+
+```text
+pilot_name = Rotorflight
+battery_alert_pct = 25
+battery_alert_interval = 10
+```
+
+Na inicialização, se `/WIDGETS/DBK_TX16KMK3_config.json` não existir ou estiver vazio, o próprio widget tenta criar esse arquivo automaticamente com os valores padrão.
 
 ## Telemetria esperada
 

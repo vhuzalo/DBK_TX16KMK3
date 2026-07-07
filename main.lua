@@ -7,6 +7,24 @@ local MODEL_IMAGE_ROOT = "/IMAGES"
 local AUDIO_ROOT = WIDGET_ROOT .. "/audio"
 local LOG_ROOT = WIDGET_ROOT .. "/logs"
 local SYSTEM_LOG_ROOT = LOG_ROOT .. "/System"
+local config_loader = loadScript(WIDGET_ROOT .. "/config.lua")
+local widget_config = config_loader and config_loader() or {
+    defaults = {
+        pilot_name = "Rotorflight",
+        battery_alert_pct = 25,
+        battery_alert_interval = 10
+    },
+    load = function()
+        return {
+            pilot_name = "Rotorflight",
+            battery_alert_pct = 25,
+            battery_alert_interval = 10
+        }
+    end
+}
+local DEFAULT_PILOT_NAME = widget_config.defaults.pilot_name
+local DEFAULT_BATTERY_ALERT_PCT = widget_config.defaults.battery_alert_pct
+local DEFAULT_BATTERY_ALERT_INTERVAL = widget_config.defaults.battery_alert_interval
 -- Telemetry sensor order
 --  1:Vbat  2:Curr  3:Hspd  4:Capa  5:Bat%  6:Tesc  7:Tmcu  8:1RSS  9:2RSS
 -- 10:RQly 11:Thr  12:Vbec 13:ARM  14:Gov  15:Vcel 16:Tmcu 17:PID# 18:ARMD
@@ -26,6 +44,9 @@ local runtime_cache = {
     safe_model_name = "",
     log_date_stamp = "",
     pic_path = "",
+    pilot_name = DEFAULT_PILOT_NAME,
+    battery_alert_pct = DEFAULT_BATTERY_ALERT_PCT,
+    battery_alert_interval = DEFAULT_BATTERY_ALERT_INTERVAL,
     total_flight_count = 0,
     daily_flight_count = 0
 }
@@ -56,6 +77,7 @@ local low_battery_alert_time = 0
 local last_arm_audio_state = nil
 local last_gov_audio_state = nil
 local last_profile_audio_state = nil
+local last_config_reload_time = -1
 
 -- Curve sampling buffers
 local rpm_buffer = {}
@@ -105,8 +127,7 @@ local options = {
     { "ValueColor", COLOR, GREEN },
     { "DispLED", BOOL, 0 },
     { "HoldSwitch", SWITCH, 0 },
-    { "UserName", STRING, "DBK" },
-    { "BatAlertPct", STRING, "25" }
+    { "BatAlertPct", VALUE, DEFAULT_BATTERY_ALERT_PCT, 0, 100 }
 }
 local radioH = 0
 local function build_default_log_info()
@@ -271,20 +292,10 @@ local function update_model_index(model_name)
     end
 end
 
-local function get_radio_owner_name(fallback_name)
-    local settings = getGeneralSettings()
-    if settings then
-        local owner_name = settings.ownerRegistrationID or settings.ownerName or settings.ownerId or settings.owner
-        if type(owner_name) == "string" and owner_name ~= "" then
-            return owner_name
-        end
-    end
-    return fallback_name or ""
-end
-
 local function create(zone, options)
+    local config = widget_config.load()
     if not options.BatAlertPct or options.BatAlertPct == "" then
-        options.BatAlertPct = "25"
+        options.BatAlertPct = config.battery_alert_pct
     end
 
     local widget = {
@@ -299,6 +310,9 @@ local function create(zone, options)
     runtime_cache.safe_model_name = ""
     runtime_cache.log_date_stamp = ""
     runtime_cache.pic_path = ""
+    runtime_cache.pilot_name = config.pilot_name
+    runtime_cache.battery_alert_pct = config.battery_alert_pct
+    runtime_cache.battery_alert_interval = config.battery_alert_interval
     runtime_cache.total_flight_count = 0
     runtime_cache.daily_flight_count = 0
     telemetry_initialized = false
@@ -382,9 +396,28 @@ local function create(zone, options)
     end
     return widget
 end
+
+local function reload_runtime_config(widget)
+    local now = getRtcTime() or 0
+    if last_config_reload_time == now then
+        return
+    end
+
+    last_config_reload_time = now
+
+    local config = widget_config.load()
+    runtime_cache.pilot_name = config.pilot_name or DEFAULT_PILOT_NAME
+    runtime_cache.battery_alert_pct = config.battery_alert_pct or DEFAULT_BATTERY_ALERT_PCT
+    runtime_cache.battery_alert_interval = config.battery_alert_interval or DEFAULT_BATTERY_ALERT_INTERVAL
+
+    if widget and widget.options then
+        widget.options.BatAlertPct = runtime_cache.battery_alert_pct
+    end
+end
+
 local function update(widget, options)
     if not options.BatAlertPct or options.BatAlertPct == "" then
-        options.BatAlertPct = "25"
+        options.BatAlertPct = runtime_cache.battery_alert_pct or DEFAULT_BATTERY_ALERT_PCT
     end
 
     widget.options = options
@@ -508,10 +541,11 @@ end
 function update_low_battery_alert(widget, battery_percent, is_armed, has_battery_percent)
     local threshold = get_battery_alert_threshold(widget)
     local should_alert = has_battery_percent and is_armed and threshold > 0 and battery_percent <= threshold
+    local alert_interval = runtime_cache.battery_alert_interval or DEFAULT_BATTERY_ALERT_INTERVAL
 
     if should_alert then
         local now = getRtcTime() or 0
-        if not low_battery_alert_active or (now - low_battery_alert_time) >= 10 then
+        if not low_battery_alert_active or (now - low_battery_alert_time) >= alert_interval then
             play_widget_audio("lowfuel.wav")
             play_triple_haptic()
             low_battery_alert_active = true
@@ -1052,6 +1086,7 @@ function draw_digital_display(x, y, value, num_digits, decimal_places, digit_siz
     end
 end
 local function refresh(widget, event, touchState)
+    reload_runtime_config(widget)
     local date_time = getDateTime()
     local screen_width =  LCD_W or widget.zone.w
     local screen_height =  LCD_H or widget.zone.h
@@ -1420,7 +1455,7 @@ local function refresh(widget, event, touchState)
         write_state = 0
     end
     -- Bottom information strip: pilot name and governor state
-    local display_user_name = get_radio_owner_name(widget.options.UserName)
+    local display_user_name = runtime_cache.pilot_name or DEFAULT_PILOT_NAME
     lcd.drawText(390, 400, display_user_name, CENTER + BOLD + square_color)
     lcd.drawText(550, 385, "Governor", BOLD + square_color)
     lcd.drawText(645, 385, gov_text, LEFT + BOLD + value_color)
