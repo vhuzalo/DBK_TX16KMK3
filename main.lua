@@ -21,7 +21,14 @@ local bank_info = { current = 1, name = "Bank 1" }
 -- Bitmap assets
 local tg_pic_obj
 local bg_pic_obj
-local cached_model_name = ""
+local runtime_cache = {
+    model_name = "",
+    safe_model_name = "",
+    log_date_stamp = "",
+    pic_path = "",
+    total_flight_count = 0,
+    daily_flight_count = 0
+}
 local telemetry_initialized = false
 
 -- Log and flight counters
@@ -110,6 +117,24 @@ local function build_default_log_info()
         "00\n"
 end
 
+local function sanitize_model_name(model_name)
+    if not model_name or model_name == "" then
+        return ""
+    end
+
+    return string.gsub(model_name, "[<>:\"/\\|?*]", "")
+end
+
+local function build_date_stamp(date_time)
+    return string.format("%d%02d%02d", date_time.year, date_time.mon, date_time.day)
+end
+
+local function build_daily_log_file_name(safe_model_name, date_time)
+    return "[" .. safe_model_name .. "]" .. build_date_stamp(date_time) .. ".log"
+end
+
+local update_cached_flight_counts
+
 local function set_led_strip_off()
     for i = 0, LED_STRIP_LENGTH - 1 do
         setRGBLedColor(i, 0, 0, 0)
@@ -161,7 +186,7 @@ local function set_led_strip_circulating_red(phase)
     applyRGBLedColors()
 end
 
-local function update_led_strip(widget, is_armed, has_disable_flags)
+function update_led_strip(widget, is_armed, has_disable_flags)
     if not LED_STRIP_LENGTH or LED_STRIP_LENGTH <= 0 then
         return
     end
@@ -270,7 +295,12 @@ local function create(zone, options)
         value_min_max[i] = { 0, 0, 0 }
         field_id[i] = { 0, false }
     end
-    cached_model_name = ""
+    runtime_cache.model_name = ""
+    runtime_cache.safe_model_name = ""
+    runtime_cache.log_date_stamp = ""
+    runtime_cache.pic_path = ""
+    runtime_cache.total_flight_count = 0
+    runtime_cache.daily_flight_count = 0
     telemetry_initialized = false
     for k, v in pairs(crsf_field) do
         local field_info = getFieldInfo(v)
@@ -294,10 +324,8 @@ local function create(zone, options)
     last_arm_audio_state = nil
     last_gov_audio_state = nil
     telemetry_initialized = false
-    file_name = "[" .. WIDGET_DIR .. "]" ..
-        string.format("%d", getDateTime().year) ..
-        string.format("%02d", getDateTime().mon) ..
-        string.format("%02d", getDateTime().day) .. ".log"
+    local date_time = getDateTime()
+    file_name = "[" .. WIDGET_DIR .. "]" .. build_date_stamp(date_time) .. ".log"
     file_path = LOG_ROOT .. "/" .. file_name
     local file_info = fstat(file_path)
     local read_count = 1
@@ -350,6 +378,7 @@ local function create(zone, options)
     local current_model = model.getInfo().name
     if current_model and current_model ~= "" then
         update_model_index(current_model)
+        update_cached_flight_counts(current_model, date_time)
     end
     return widget
 end
@@ -409,7 +438,7 @@ local function play_triple_haptic()
     playHaptic(15, 0)
 end
 
-local function update_profile_audio(profile_value, has_profile_sensor)
+function update_profile_audio(profile_value, has_profile_sensor)
     if not has_profile_sensor then
         last_profile_audio_state = nil
         return
@@ -433,7 +462,7 @@ local function update_profile_audio(profile_value, has_profile_sensor)
     end
 end
 
-local function update_arm_audio(is_armed, has_arm_sensor)
+function update_arm_audio(is_armed, has_arm_sensor)
     if not has_arm_sensor then
         last_arm_audio_state = nil
         return
@@ -455,7 +484,7 @@ local function update_arm_audio(is_armed, has_arm_sensor)
     end
 end
 
-local function update_governor_audio(gov_text, has_governor_state)
+function update_governor_audio(gov_text, has_governor_state)
     if not has_governor_state or not gov_text then
         last_gov_audio_state = nil
         return
@@ -476,7 +505,7 @@ local function update_governor_audio(gov_text, has_governor_state)
     end
 end
 
-local function update_low_battery_alert(widget, battery_percent, is_armed, has_battery_percent)
+function update_low_battery_alert(widget, battery_percent, is_armed, has_battery_percent)
     local threshold = get_battery_alert_threshold(widget)
     local should_alert = has_battery_percent and is_armed and threshold > 0 and battery_percent <= threshold
 
@@ -499,7 +528,7 @@ local function get_total_flight_count(model_name)
     if not model_name or model_name == "" then
         return 0
     end
-    local safe_model_name = string.gsub(model_name, "[<>:\"/\\|?*]", "")
+    local safe_model_name = sanitize_model_name(model_name)
     local total_file_path = SYSTEM_LOG_ROOT .. "/totalall_[" .. safe_model_name .. "].txt"
     local file_info = fstat(total_file_path)
     if file_info and file_info.size > 0 then
@@ -515,11 +544,41 @@ local function get_total_flight_count(model_name)
     end
     return 0
 end
+
+update_cached_flight_counts = function(model_name, date_time)
+    if not model_name or model_name == "" then
+        runtime_cache.total_flight_count = 0
+        runtime_cache.daily_flight_count = 0
+        return
+    end
+
+    local safe_model_name = sanitize_model_name(model_name)
+    runtime_cache.total_flight_count = get_total_flight_count(model_name)
+    runtime_cache.daily_flight_count = 0
+
+    if safe_model_name == "" then
+        return
+    end
+
+    local target_file_path = LOG_ROOT .. "/" .. build_daily_log_file_name(safe_model_name, date_time)
+    local file_info = fstat(target_file_path)
+    if file_info and file_info.size > 0 then
+        local temp_file_obj = io.open(target_file_path, "r")
+        if temp_file_obj then
+            local temp_log_info = io.read(temp_file_obj, LOG_INFO_LEN + 1)
+            if temp_log_info and string.len(temp_log_info) >= 23 then
+                runtime_cache.daily_flight_count = tonumber(string.sub(temp_log_info, 21, 23)) or 0
+            end
+            io.close(temp_file_obj)
+        end
+    end
+end
+
 local function increment_total_flight_count(model_name)
     if not model_name or model_name == "" then
         return
     end
-    local safe_model_name = string.gsub(model_name, "[<>:\"/\\|?*]", "")
+    local safe_model_name = sanitize_model_name(model_name)
     local total_file_path = SYSTEM_LOG_ROOT .. "/totalall_[" .. safe_model_name .. "].txt"
     local current_count = get_total_flight_count(model_name)
     local new_count = current_count + 1
@@ -535,11 +594,9 @@ local function write_rpm_data(model_name, flight_num, start_time, end_time, rpm_
     if not model_name or model_name == "" or #rpm_data == 0 then
         return
     end
-    local safe_name = string.gsub(model_name, "[<>:\"/\\|?*]", "")
-    local file_name = "[".. safe_name .."]" ..
-        string.format("%d", getDateTime().year) ..
-        string.format("%02d", getDateTime().mon) ..
-        string.format("%02d", getDateTime().day) .. "_rpm.txt"
+    local safe_name = sanitize_model_name(model_name)
+    local date_time = getDateTime()
+    local file_name = "[".. safe_name .."]" .. build_date_stamp(date_time) .. "_rpm.txt"
     local file_path = LOG_ROOT .. "/" .. file_name
     local file_obj = io.open(file_path, "a")
     if file_obj then
@@ -557,11 +614,9 @@ local function write_current_data(model_name, flight_num, start_time, end_time, 
     if not model_name or model_name == "" or #current_data == 0 then
         return
     end
-    local safe_name = string.gsub(model_name, "[<>:\"/\\|?*]", "")
-    local file_name = "[".. safe_name .."]" ..
-        string.format("%d", getDateTime().year) ..
-        string.format("%02d", getDateTime().mon) ..
-        string.format("%02d", getDateTime().day) .. "_electricity.txt"
+    local safe_name = sanitize_model_name(model_name)
+    local date_time = getDateTime()
+    local file_name = "[".. safe_name .."]" .. build_date_stamp(date_time) .. "_electricity.txt"
     local file_path = LOG_ROOT .. "/" .. file_name
     local file_obj = io.open(file_path, "a")
     if file_obj then
@@ -579,11 +634,9 @@ local function write_voltage_data(model_name, flight_num, start_time, end_time, 
     if not model_name or model_name == "" or #voltage_data == 0 then
         return
     end
-    local safe_name = string.gsub(model_name, "[<>:\"/\\|?*]", "")
-    local file_name = "[".. safe_name .."]" ..
-        string.format("%d", getDateTime().year) ..
-        string.format("%02d", getDateTime().mon) ..
-        string.format("%02d", getDateTime().day) .. "_volt.txt"
+    local safe_name = sanitize_model_name(model_name)
+    local date_time = getDateTime()
+    local file_name = "[".. safe_name .."]" .. build_date_stamp(date_time) .. "_volt.txt"
     local file_path = LOG_ROOT .. "/" .. file_name
     local file_obj = io.open(file_path, "a")
     if file_obj then
@@ -604,33 +657,7 @@ local function draw_rounded_rectangle(xs, ys, w, h, r, color)
     lcd.drawLine(xs, ys + r, xs, ys + h - r, SOLID, color)
     lcd.drawLine(xs + w, ys + r, xs + w, ys + h - r, SOLID, color)
 end
-local function draw_ring_progress(xs, ys, value, max_value, size)
-    local radius = size
-    local ring_width = 8
-    local segments = 20
-    local gap = 3
-    local angle_coverage = 270
-    local segments_to_draw = 15
-    local start_angle = -135
-    local gray_color = lcd.RGB(80, 80, 80)
-    value = math.max(0, math.min(max_value, value))
-    local progress_percent = value / max_value
-    local active_segments = math.floor(segments_to_draw * progress_percent)
-    for i = 0, segments_to_draw - 1 do
-        local angle_start = (360 / segments) * i + start_angle + gap / 2
-        local angle_end = (360 / segments) * (i + 1) + start_angle - gap / 2
-        local segment_color = gray_color
-        if i < active_segments then
-            local seg_percent = (i / (segments_to_draw - 1)) * 100
-            local r = math.floor(seg_percent * 2.55)
-            local g = math.floor(255 - (seg_percent * 2.55))
-            local b = 0
-            segment_color = lcd.RGB(r, g, b)
-        end
-        lcd.drawAnnulus(xs, ys, radius - ring_width, radius, angle_start, angle_end, segment_color)
-    end
-end
-local function rqly_signal_bars_ladder(xs, ys, rqly_percent, default_color, size)
+function rqly_signal_bars_ladder(xs, ys, rqly_percent, default_color, size)
     local bar_count = 6
     local bar_width = math.floor(6 * size)
     local bar_spacing = math.floor(2 * size)
@@ -661,7 +688,7 @@ local function rqly_signal_bars_ladder(xs, ys, rqly_percent, default_color, size
         lcd.drawFilledRectangle(bar_x, bar_y, bar_width, bar_height, bar_color)
     end
 end
-local function draw_gauge_meter(xs, ys, value, max_value, size, color, bg_color)
+function draw_gauge_meter(xs, ys, value, max_value, size, color, bg_color)
     local radius = size
     local start_angle = 180
     local end_angle = 270
@@ -731,52 +758,6 @@ local function draw_gauge_meter(xs, ys, value, max_value, size, color, bg_color)
     lcd.drawLine(center_x, center_y - 1, pointer_x, pointer_y - 1, SOLID, color)
     lcd.drawFilledCircle(center_x, center_y, math.max(3, radius * 0.08), color)
 end
-local function draw_digital_display(x, y, value, num_digits, decimal_places, digit_size, color)
-    local seg_width = digit_size * 0.6
-    local seg_height = digit_size * 0.5
-    local seg_thickness = digit_size * 0.15
-    local digit_spacing = digit_size * 1.2
-    local gray_color = lcd.RGB(80, 80, 80)
-    local dot_size = seg_thickness
-    local multiplier = math.pow(10, decimal_places)
-    local int_part = math.floor(value)
-    local dec_part = math.floor((value - int_part) * multiplier + 0.5)
-    if dec_part >= multiplier then
-        int_part = int_part + 1
-        dec_part = 0
-    end
-    local max_int_value = math.pow(10, num_digits) - 1
-    int_part = math.min(max_int_value, int_part)
-    local int_value_digits = 0
-    if int_part == 0 then
-        int_value_digits = 1
-    else
-        int_value_digits = math.floor(math.log(int_part) / math.log(10)) + 1
-    end
-    local current_x = x
-    for i = 0, num_digits - 1 do
-        local divisor = math.pow(10, num_digits - 1 - i)
-        local digit = math.floor(int_part / divisor) % 10
-        local digit_color = gray_color
-        local is_leading_zero = true
-        if i >= (num_digits - int_value_digits) then
-            digit_color = color
-            is_leading_zero = false
-        end
-        draw_digit_segment(current_x, y, digit, seg_width, seg_height, seg_thickness, digit_color, gray_color)
-        current_x = current_x + digit_spacing
-    end
-    if decimal_places > 0 then
-        local dot_y = y + seg_height * 2 + seg_thickness * 2
-        lcd.drawFilledRectangle(current_x - digit_spacing * 0.15, dot_y, dot_size, dot_size, color)
-    end
-    for i = 0, decimal_places - 1 do
-        local divisor = math.pow(10, decimal_places - 1 - i)
-        local digit = math.floor(dec_part / divisor) % 10
-        draw_digit_segment(current_x, y, digit, seg_width, seg_height, seg_thickness, color, gray_color)
-        current_x = current_x + digit_spacing
-    end
-end
 local function draw_digit_segment(x, y, digit, seg_width, seg_height, seg_thickness, color, bg_color)
     local segments = {
         [0] = {1,1,1,1,1,1,0},
@@ -813,7 +794,7 @@ local function draw_digit_segment(x, y, digit, seg_width, seg_height, seg_thickn
         lcd.drawFilledRectangle(x + seg_thickness, y + seg_height + seg_thickness, seg_width, seg_thickness, color)
     end
 end
-local function draw_time_display(x, y, hours, minutes, digit_size, color)
+function draw_time_display(x, y, hours, minutes, digit_size, color)
     local seg_width = digit_size * 0.6
     local seg_height = digit_size * 0.5
     local seg_thickness = digit_size * 0.15
@@ -905,7 +886,7 @@ local function wrap_disable_flags_text(text, max_chars_per_line, max_lines)
     return lines
 end
 
-local function draw_status_block(x, y, text, color)
+function draw_status_block(x, y, text, color)
     local lines = wrap_disable_flags_text(text, 16, 2)
     if #lines == 0 then
         lines = { "..." }
@@ -916,7 +897,7 @@ local function draw_status_block(x, y, text, color)
     end
 end
 
-local function get_governor_state_text(gov_value, has_gov_sensor, throttle_value)
+function get_governor_state_text(gov_value, has_gov_sensor, throttle_value)
     local gov_state_names = {
         [0] = "OFF",
         [1] = "IDLE",
@@ -949,7 +930,7 @@ local function get_governor_state_text(gov_value, has_gov_sensor, throttle_value
 
     return "ACTIVE"
 end
-local function draw_ring_progress(xs, ys, value, max_value, size)
+function draw_ring_progress(xs, ys, value, max_value, size)
     local radius = size
     local ring_width = 8
     local segments = 20
@@ -975,7 +956,7 @@ local function draw_ring_progress(xs, ys, value, max_value, size)
         lcd.drawAnnulus(xs, ys, radius - ring_width, radius, angle_start, angle_end, segment_color)
     end
 end
-local function draw_power_gauge(center_x, center_y, radius, power_value, max_power, gauge_color, needle_color)
+function draw_power_gauge(center_x, center_y, radius, power_value, max_power, gauge_color, needle_color)
     local display_max = max_power or 5000
     power_value = math.max(0, math.min(display_max, power_value))
     local start_angle = 225
@@ -1024,7 +1005,7 @@ local function draw_power_gauge(center_x, center_y, radius, power_value, max_pow
         power_str = string.format("%.0fA", power_value)
     lcd.drawText(center_x, center_y + 55, power_str,  needle_color + CENTER + VCENTER)
 end
-local function draw_digital_display(x, y, value, num_digits, decimal_places, digit_size, color)
+function draw_digital_display(x, y, value, num_digits, decimal_places, digit_size, color)
     local seg_width = digit_size * 0.6
     local seg_height = digit_size * 0.5
     local seg_thickness = digit_size * 0.15
@@ -1071,6 +1052,7 @@ local function draw_digital_display(x, y, value, num_digits, decimal_places, dig
     end
 end
 local function refresh(widget, event, touchState)
+    local date_time = getDateTime()
     local screen_width =  LCD_W or widget.zone.w
     local screen_height =  LCD_H or widget.zone.h
     lcd.setColor(CUSTOM_COLOR, BLACK)
@@ -1086,7 +1068,7 @@ local function refresh(widget, event, touchState)
     if bg_pic_obj then
         lcd.drawBitmap(bg_pic_obj, 0, 0)
     end
-    local model_name = model.getInfo().name
+    local model_name = model.getInfo().name or ""
     lcd.drawText(720, 414, model_name, RIGHT + MIDSIZE + value_color)
     if tg_pic_obj then
            lcd.drawBitmap(tg_pic_obj, 530, 190)        
@@ -1121,26 +1103,29 @@ local function refresh(widget, event, touchState)
     if has_telemetry and not telemetry_initialized then
         telemetry_initialized = true
     end
-    local current_model_name = model.getInfo().name
+    local current_model_name = model_name
+    local current_date_stamp = build_date_stamp(date_time)
     local should_load_log = false
     if rqly_percent > 0 and not telemetry_initialized then
         telemetry_initialized = true
         should_load_log = true
     end
-    if current_model_name ~= cached_model_name and current_model_name ~= "" then
-        cached_model_name = current_model_name
-        cached_pic_path = MODEL_IMAGE_ROOT .. "/" .. string.sub(cached_model_name, 2) .. ".png"
+    if current_model_name ~= runtime_cache.model_name and current_model_name ~= "" then
+        runtime_cache.model_name = current_model_name
+        runtime_cache.safe_model_name = sanitize_model_name(current_model_name)
+        runtime_cache.pic_path = MODEL_IMAGE_ROOT .. "/" .. string.sub(runtime_cache.model_name, 2) .. ".png"
+        runtime_cache.log_date_stamp = current_date_stamp
+        should_load_log = true
+    elseif current_model_name ~= "" and runtime_cache.log_date_stamp ~= current_date_stamp then
+        runtime_cache.log_date_stamp = current_date_stamp
         should_load_log = true
     end
     if should_load_log and current_model_name and current_model_name ~= "" then
-        local safe_model_name = string.gsub(current_model_name, "[<>:\"/\\|?*]", "")
-        local new_file_name = "[".. safe_model_name .."]" ..
-            string.format("%d", getDateTime().year) ..
-            string.format("%02d", getDateTime().mon) ..
-            string.format("%02d", getDateTime().day) .. ".log"
+        local safe_model_name = runtime_cache.safe_model_name ~= "" and runtime_cache.safe_model_name or sanitize_model_name(current_model_name)
+        local new_file_name = build_daily_log_file_name(safe_model_name, date_time)
         local new_file_path = LOG_ROOT .. "/" .. new_file_name
-        if fstat(cached_pic_path) then
-            tg_pic_obj = Bitmap.open(cached_pic_path)
+        if fstat(runtime_cache.pic_path) then
+            tg_pic_obj = Bitmap.open(runtime_cache.pic_path)
         else
             tg_pic_obj = nil
         end
@@ -1173,16 +1158,19 @@ local function refresh(widget, event, touchState)
                     if tonumber(str_temp) ~= nil then
                         fly_number = tonumber(str_temp)
                     end
+                    runtime_cache.daily_flight_count = fly_number
                 end
             end
         else
             fly_number = 0
-            log_info = string.format("%d", getDateTime().year) .. '/' ..
-                string.format("%02d", getDateTime().mon) .. '/' ..
-                string.format("%02d", getDateTime().day) .. '|' ..
+            runtime_cache.daily_flight_count = 0
+            log_info = string.format("%d", date_time.year) .. '/' ..
+                string.format("%02d", date_time.mon) .. '/' ..
+                string.format("%02d", date_time.day) .. '|' ..
                 "00:00:00" .. '|' ..
                 "00\n"
         end
+        update_cached_flight_counts(current_model_name, date_time)
         session_flight_count = 0
     end
     local hold_active = false
@@ -1289,9 +1277,9 @@ local function refresh(widget, event, touchState)
             rpm_buffer = {}
             rpm_collect_timer = 0
             rpm_start_time = string.format("%02d:%02d:%02d",
-                getDateTime().hour,
-                getDateTime().min,
-                getDateTime().sec)
+                date_time.hour,
+                date_time.min,
+                date_time.sec)
             current_buffer = {}
             current_start_time = rpm_start_time
             voltage_buffer = {}
@@ -1338,18 +1326,18 @@ local function refresh(widget, event, touchState)
         -- Current frame: prepare data only, do not perform any file I/O
         fly_number = fly_number + 1
         local end_time_str = string.format("%02d:%02d:%02d",
-            getDateTime().hour, getDateTime().min, getDateTime().sec)
+            date_time.hour, date_time.min, date_time.sec)
         log_info =
-            string.format("%d", getDateTime().year) .. '/' ..
-            string.format("%02d", getDateTime().mon) .. '/' ..
-            string.format("%02d", getDateTime().day) .. '|' ..
+            string.format("%d", date_time.year) .. '/' ..
+            string.format("%02d", date_time.mon) .. '/' ..
+            string.format("%02d", date_time.day) .. '|' ..
             hours .. ':' .. minutes[2] .. ':' .. seconds[2] .. '|' ..
             string.format("%02d", fly_number) .. "\n"
         log_data[fly_number] =
             string.format("%02d", fly_number) .. '|' ..
-            string.format("%02d", getDateTime().hour) .. ':' ..
-            string.format("%02d", getDateTime().min) .. ':' ..
-            string.format("%02d", getDateTime().sec) .. '|' ..
+            string.format("%02d", date_time.hour) .. ':' ..
+            string.format("%02d", date_time.min) .. ':' ..
+            string.format("%02d", date_time.sec) .. '|' ..
             minutes[1] .. ':' .. seconds[1] .. '|' ..
             string.format("%04d", math.max(0, value_min_max[4][1] - value_min_max[4][3])) .. '|' ..
             string.format("%03d", math.max(0, value_min_max[5][2] - value_min_max[5][1])) .. '|' ..
@@ -1377,7 +1365,7 @@ local function refresh(widget, event, touchState)
             log_info   = log_info,
             log_data   = log_data,
             fly_number = fly_number,
-            model_name = cached_model_name,
+            model_name = runtime_cache.model_name,
             end_time   = end_time_str,
             rpm_buf    = rpm_buffer,   rpm_start = rpm_start_time,
             cur_buf    = current_buffer, cur_start = current_start_time,
@@ -1387,11 +1375,12 @@ local function refresh(widget, event, touchState)
         write_en_flag = false
         rpm_buffer = {};  current_buffer = {};  voltage_buffer = {}
         -- Finalization work without heavy I/O runs in the trigger frame
-        update_model_index(cached_model_name)
+        update_model_index(runtime_cache.model_name)
         session_flight_count = 0
-        local current_model_name = model.getInfo().name
         if current_model_name and current_model_name ~= "" then
             increment_total_flight_count(current_model_name)
+            runtime_cache.total_flight_count = runtime_cache.total_flight_count + 1
+            runtime_cache.daily_flight_count = fly_number
         end
     end
     -- Multi-frame write state machine: complete only one file write per frame to avoid exceeding the CPU budget in a single frame
@@ -1485,33 +1474,8 @@ local function refresh(widget, event, touchState)
     -- Right column: flight counters and timer
     local flight_minutes = math.floor(second[1] % 3600 / 60)
     local flight_seconds = second[1] % 3600 % 60
-    local total_all_flights = 0
-    local flight_count = 0
-    local current_model_name = model.getInfo().name
-
-    if telemetry_initialized and current_model_name and current_model_name ~= "" then
-        total_all_flights = get_total_flight_count(current_model_name)
-
-        local safe_model_name = string.gsub(current_model_name, "[<>:\"/\\|?*]", "")
-        local target_file_name = "[" .. safe_model_name .. "]" ..
-            string.format("%d", getDateTime().year) ..
-            string.format("%02d", getDateTime().mon) ..
-            string.format("%02d", getDateTime().day) .. ".log"
-        local target_file_path = LOG_ROOT .. "/" .. target_file_name
-        local file_info = fstat(target_file_path)
-        if file_info and file_info.size > 0 then
-            local temp_file_obj = io.open(target_file_path, "r")
-            if temp_file_obj then
-                local temp_log_info = io.read(temp_file_obj, LOG_INFO_LEN + 1)
-                if temp_log_info and string.len(temp_log_info) >= 23 then
-                    flight_count = tonumber(string.sub(temp_log_info, 21, 23)) or 0
-                end
-                io.close(temp_file_obj)
-            end
-        end
-    end
-
-    local total_flight_count = flight_count + session_flight_count
+    local total_all_flights = telemetry_initialized and runtime_cache.total_flight_count or 0
+    local total_flight_count = runtime_cache.daily_flight_count + session_flight_count
     lcd.drawText(554, 125, "Flight", BOLD + square_color)
     draw_digital_display(620, 130, total_all_flights, 4, 0, 13, value_color)
     draw_digital_display(715, 130, math.max(0, total_flight_count), 3, 0, 13, value_color)
