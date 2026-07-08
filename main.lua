@@ -1,5 +1,5 @@
 local NAME = "DBK_TX16KMK3"
-local VERSION = "v1.0.2"
+local VERSION = "v1.0.3"
 local WIDGET_DIR = "DBK_TX16KMK3"
 local WIDGET_ROOT = "/WIDGETS/" .. WIDGET_DIR
 local IMAGE_ROOT = WIDGET_ROOT .. "/image"
@@ -126,6 +126,7 @@ local options = {
     { "SquareColor", COLOR, WHITE },
     { "ValueColor", COLOR, GREEN },
     { "DispLED", BOOL, 0 },
+    { "UseGovernor", BOOL, 1 },
     { "HoldSwitch", SWITCH, 0 },
     { "BatAlertPct", VALUE, DEFAULT_BATTERY_ALERT_PCT, 0, 100 }
 }
@@ -409,10 +410,6 @@ local function reload_runtime_config(widget)
     runtime_cache.pilot_name = config.pilot_name or DEFAULT_PILOT_NAME
     runtime_cache.battery_alert_pct = config.battery_alert_pct or DEFAULT_BATTERY_ALERT_PCT
     runtime_cache.battery_alert_interval = config.battery_alert_interval or DEFAULT_BATTERY_ALERT_INTERVAL
-
-    if widget and widget.options then
-        widget.options.BatAlertPct = runtime_cache.battery_alert_pct
-    end
 end
 
 local function update(widget, options)
@@ -536,6 +533,10 @@ function update_governor_audio(gov_text, has_governor_state)
         end
         last_gov_audio_state = gov_text
     end
+end
+
+local function is_governor_enabled(widget)
+    return not widget or widget.options.UseGovernor ~= 0
 end
 
 function update_low_battery_alert(widget, battery_percent, is_armed, has_battery_percent)
@@ -1250,7 +1251,8 @@ local function refresh(widget, event, touchState)
     end
     lcd.drawText(175, 44, tostring(bank_info.current), CENTER + VCENTER + BOLD + MIDSIZE + bank_color)
     local arm_status = (field_id[13][2] and value_min_max[13][1]) or 0
-    local gov_status = (field_id[14][2] and value_min_max[14][1]) or nil
+    local gov_enabled = is_governor_enabled(widget)
+    local gov_status = (gov_enabled and field_id[14][2] and value_min_max[14][1]) or nil
     local throttle_value = (field_id[11][2] and value_min_max[11][1]) or nil
     local disable_flags = nil
     if field_id[18][2] then
@@ -1287,10 +1289,10 @@ local function refresh(widget, event, touchState)
     end
     update_led_strip(widget, is_armed, disable_flags_text ~= "OK")
     draw_status_block(480, 40, arm_status_text, arm_status_color)
-    local gov_text = get_governor_state_text(gov_status, field_id[14][2], throttle_value)
+    local gov_text = gov_enabled and get_governor_state_text(gov_status, field_id[14][2], throttle_value) or "DISABLED"
     update_profile_audio(bank_info.current, field_id[17][2])
     update_arm_audio(is_armed, field_id[13][2])
-    update_governor_audio(gov_text, field_id[14][2] or field_id[11][2])
+    update_governor_audio(gov_enabled and gov_text or nil, gov_enabled and (field_id[14][2] or field_id[11][2]))
     if field_id[13][2] then
         last_arm_status = arm_status
     end

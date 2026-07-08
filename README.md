@@ -62,7 +62,7 @@ O foco deste projeto é entregar uma tela principal limpa, legível e otimizada 
 
 Você pode baixar a versão mais recente em `.zip` por este link:
 
-[Baixar DBK_TX16KMK3 v1.0.2 (.zip)](https://github.com/vhuzalo/DBK_TX16KMK3/archive/refs/tags/v1.0.2.zip)
+[Baixar DBK_TX16KMK3 v1.0.3 (.zip)](https://github.com/vhuzalo/DBK_TX16KMK3/archive/refs/tags/v1.0.3.zip)
 
 Depois de baixar:
 
@@ -121,6 +121,7 @@ O widget possui as seguintes opções:
 - `SquareColor`: cor dos textos e elementos secundários
 - `ValueColor`: cor dos valores principais
 - `DispLED`: habilita ou desabilita os LEDs do rádio
+- `UseGovernor`: habilita ou desabilita a leitura e exibição do governor
 - `HoldSwitch`: chave usada para congelar mínimos e máximos
 - `BatAlertPct`: percentual de bateria para disparo do alerta de bateria baixa
 
@@ -159,6 +160,11 @@ battery_alert_interval = 10
 ```
 
 Na inicialização, se `/WIDGETS/DBK_TX16KMK3_config.json` não existir ou estiver vazio, o próprio widget tenta criar esse arquivo automaticamente com os valores padrão.
+
+## Novidades da v1.0.3
+
+- corrigido o alerta de bateria baixa para respeitar o valor persistido em `BatAlertPct` nas opções do widget
+- removida a sobrescrita em runtime do percentual de alerta a partir do JSON, evitando que o aviso continuasse disparando com valor antigo
 
 ## Novidades da v1.0.2
 
@@ -233,6 +239,8 @@ O estado do governor pode ser obtido:
 - diretamente do sensor `Gov`, quando disponível
 - ou inferido a partir do throttle, seguindo a lógica já usada no RFMONO
 
+Se a opção `UseGovernor` estiver desabilitada nas configurações do widget, o script deixa de ler o governor e também desativa sua exibição e os áudios relacionados.
+
 ### Bateria baixa
 
 Quando a bateria atinge o percentual configurado:
@@ -248,4 +256,4 @@ Quando a bateria atinge o percentual configurado:
 
 ## Versão
 
-Versão atual do widget: **v1.0.2**
+Versão atual do widget: **v1.0.3**
