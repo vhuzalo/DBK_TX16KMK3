@@ -114,6 +114,42 @@ Exemplo:
 
 Se a imagem do modelo não for encontrada, o widget usa a imagem padrão interna.
 
+### Preparar imagens para o widget
+
+O utilitário [`tools/redimensionar_imagem_widget.py`](tools/redimensionar_imagem_widget.py)
+cria uma imagem PNG de `250x150 px`, preserva a proporção da imagem original e
+centraliza o resultado em um fundo preto. Ele requer Python 3 e a biblioteca
+Pillow:
+
+```bash
+python3 -m pip install Pillow
+```
+
+Na raiz do repositório, use-o informando a imagem de origem e, opcionalmente, o
+arquivo de saída:
+
+```bash
+python3 tools/redimensionar_imagem_widget.py foto-do-modelo.jpg /IMAGES/GOOSKYRS4.png
+```
+
+Sem o segundo argumento, o arquivo é criado ao lado da imagem de origem com o
+sufixo `_dbk.png`:
+
+```bash
+python3 tools/redimensionar_imagem_widget.py foto-do-modelo.jpg
+```
+
+Para remover automaticamente o fundo antes do redimensionamento, instale também
+`rembg` e adicione `--remover-fundo`:
+
+```bash
+python3 -m pip install rembg
+python3 tools/redimensionar_imagem_widget.py foto-do-modelo.png /IMAGES/GOOSKYRS4.png --remover-fundo
+```
+
+Copie o PNG gerado para `/IMAGES/` no cartão SD e dê a ele o mesmo nome do
+modelo configurado no rádio, conforme os exemplos acima.
+
 ## Configuração do widget
 
 O widget possui as seguintes opções:
